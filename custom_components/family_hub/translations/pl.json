@@ -70,7 +70,8 @@
       }
     },
     "abort": {
-      "already_configured": "Family Hub jest już skonfigurowany. Użyj Konfiguruj, aby zmienić przypomnienia, przetestować powiadomienie lub zainstalować aktualizację."
+      "already_configured": "Family Hub jest już skonfigurowany. Użyj Konfiguruj, aby zmienić przypomnienia, przetestować powiadomienie lub zainstalować aktualizację.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     }
   },
   "options": {
@@ -171,7 +172,8 @@
       "no_backups": "Nie ma jeszcze migawek historii ustawień - Family Hub tworzy pierwszą automatycznie o najbliższej północy lub w południe albo od razu przyciskiem „Utwórz kopię teraz” w Ustawieniach karty kalendarza > Narzędzia deweloperskie. Jeśli musisz odzyskać dane wcześniej, użyj pełnej kopii zapasowej Home Assistant (Ustawienia > System > Kopie zapasowe).",
       "restore_done": "Przywrócono migawkę z {when}. Ustawienia urządzeń rozesłane na żywo: {devices}. Migawka bezpieczeństwa stanu sprzed tego przywrócenia została zapisana automatycznie.",
       "export_done": "Wyeksportowano migawkę z {when}. {download_link} (link wygasa za 5 minut) lub skopiuj plik z {path} przez Samba/SSH/dodatek Terminal.",
-      "import_done": "Zaimportowano migawkę z {when}. Można ją teraz przywrócić w Przywróć migawkę - sam import niczego jeszcze nie zmienił."
+      "import_done": "Zaimportowano migawkę z {when}. Można ją teraz przywrócić w Przywróć migawkę - sam import niczego jeszcze nie zmienił.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     },
     "error": {
       "update_failed": "Nie udało się zainstalować aktualizacji: {error}",

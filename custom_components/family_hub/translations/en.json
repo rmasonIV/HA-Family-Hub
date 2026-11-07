@@ -70,7 +70,8 @@
       }
     },
     "abort": {
-      "already_configured": "Family Hub is already configured. Use Configure to change reminder settings, test a notification, or install an update."
+      "already_configured": "Family Hub is already configured. Use Configure to change reminder settings, test a notification, or install an update.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     }
   },
   "options": {
@@ -171,7 +172,8 @@
       "no_backups": "No Settings-history snapshots exist yet - Family Hub takes the first one automatically at the next midnight or noon, or right away with Back up now in the calendar card's Settings > Developer tools. If you need to recover sooner, use a full Home Assistant backup instead (Settings > System > Backups).",
       "restore_done": "Restored the snapshot from {when}. Per-device settings pushed live: {devices}. A safety snapshot of what you had right before this restore was saved automatically.",
       "export_done": "Exported the snapshot from {when}. {download_link} (the link expires in 5 minutes), or copy the file from {path} via Samba/SSH/a Terminal add-on.",
-      "import_done": "Imported the snapshot from {when}. It's now available to restore from Restore a snapshot - importing it here didn't change anything yet."
+      "import_done": "Imported the snapshot from {when}. It's now available to restore from Restore a snapshot - importing it here didn't change anything yet.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     },
     "error": {
       "update_failed": "Couldn't install the update: {error}",

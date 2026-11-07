@@ -465,6 +465,7 @@ async def say(hass: HomeAssistant, text: str, user_id: Optional[str]) -> str:
 
 
 def register(hass: HomeAssistant) -> None:
+    return None  # Excluded until caller context is enforced throughout.
     websocket_api.async_register_command(hass, ws_parse)
     websocket_api.async_register_command(hass, ws_add)
     if not hass.services.has_service(DOMAIN, "quick_add"):
@@ -551,6 +552,7 @@ def _polite(sentences: list[str], start: str = _POLITE_START) -> list[str]:
 def register_assist(hass: HomeAssistant) -> list:
     """Teach Home Assistant's built-in Assist agent the Quick Add sentences. Returns the unregister callbacks.
     Works for the Assist chat and voice alike; an LLM pipeline needs "Prefer handling commands locally" on."""
+    return None  # Excluded until caller context is enforced throughout.
     try:
         from homeassistant.components.conversation.agent_manager import get_agent_manager
     except Exception as err:  # noqa: BLE001 - an older or newer Home Assistant without this API

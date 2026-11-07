@@ -17,6 +17,7 @@ from . import number as device_settings_number
 from . import select as device_settings_select
 from . import switch as device_settings_switch
 from . import text as device_settings_text
+from . import profile
 from .const import (
     DEVICE_SCOPED_SETTINGS_FIELDS,
     DEVICE_SETTINGS_EVENT_IDENTIFY,
@@ -209,15 +210,33 @@ async def ws_report(hass: HomeAssistant, connection: websocket_api.ActiveConnect
     entry_data = _entry_data_or_error(hass, connection, msg["id"])
     if entry_data is None:
         return
+    if connection.user is None:
+        connection.send_error(msg["id"], "forbidden", "An authenticated account is required.")
+        return
     device_id = msg["device_id"].strip()
-    if not device_id:
-        connection.send_error(msg["id"], "invalid_format", "device_id must be non-empty")
+    if not device_id or len(device_id) > profile.MAX_DEVICE_ID_LENGTH:
+        connection.send_error(msg["id"], "invalid_format", "device_id must contain 1 to 128 characters")
+        return
+    devices = entry_data["device_settings"]["devices"]
+    record = devices.get(device_id)
+    if record is not None and not profile.can_access_device(connection, record):
+        connection.send_error(msg["id"], "forbidden", "This device belongs to another account; an admin must adopt legacy devices.")
+        return
+    if record is None and len(devices) >= profile.MAX_DEVICES:
+        connection.send_error(msg["id"], "limit_reached", "The device limit has been reached.")
         return
     cleaned = _validate_settings(msg["settings"])
     if cleaned is None:
         connection.send_error(msg["id"], "invalid_format", "settings contained an unrecognized key or invalid value")
         return
     instance_id = (msg.get("instance_id") or "").strip()
+    if len(instance_id) > profile.MAX_DEVICE_ID_LENGTH:
+        connection.send_error(msg["id"], "invalid_format", "Instance ID is too long.")
+        return
+    instances = (record or {}).get("instances") or {}
+    if instance_id and instance_id not in instances and len(instances) >= profile.MAX_INSTANCES_PER_DEVICE:
+        connection.send_error(msg["id"], "limit_reached", "The instance limit has been reached.")
+        return
     cleaned_instance = None
     if instance_id:
         cleaned_instance = _validate_instance_settings(msg.get("instance_settings") or {})
@@ -227,6 +246,7 @@ async def ws_report(hass: HomeAssistant, connection: websocket_api.ActiveConnect
     blob = entry_data["device_settings"]
     is_new_device = device_id not in blob["devices"]
     record = _device_record(blob["devices"], device_id)
+    record.setdefault("owner_user_id", connection.user.id)
     if bool(msg.get("is_kiosk_account")) and "privacy_participates" not in record:
         record["privacy_participates"] = True
     record["settings"] = cleaned
@@ -278,6 +298,9 @@ async def ws_get_pending(hass: HomeAssistant, connection: websocket_api.ActiveCo
             result["instance"] = None
         connection.send_result(msg["id"], result)
         return
+    if not profile.can_access_device(connection, record):
+        connection.send_error(msg["id"], "forbidden", "This device belongs to another account.")
+        return
     result = {"seq": record.get("pending_seq", 0), "settings": record.get("pending_settings")}
     instance_id = (msg.get("instance_id") or "").strip()
     if instance_id:
@@ -328,7 +351,9 @@ async def ws_subscribe_push(hass: HomeAssistant, connection: websocket_api.Activ
 
     @callback
     def forward_event(event) -> None:
-        connection.send_message(websocket_api.event_message(msg["id"], event.data))
+        record = entry_data["device_settings"]["devices"].get(event.data.get("device_id"))
+        if record is not None and profile.can_access_device(connection, record):
+            connection.send_message(websocket_api.event_message(msg["id"], event.data))
 
     connection.subscriptions[msg["id"]] = hass.bus.async_listen(DEVICE_SETTINGS_EVENT_PUSH, forward_event)
     connection.send_result(msg["id"])
@@ -344,7 +369,9 @@ async def ws_subscribe_identify(hass: HomeAssistant, connection: websocket_api.A
 
     @callback
     def forward_event(event) -> None:
-        connection.send_message(websocket_api.event_message(msg["id"], event.data))
+        record = entry_data["device_settings"]["devices"].get(event.data.get("device_id"))
+        if record is not None and profile.can_access_device(connection, record):
+            connection.send_message(websocket_api.event_message(msg["id"], event.data))
 
     connection.subscriptions[msg["id"]] = hass.bus.async_listen(DEVICE_SETTINGS_EVENT_IDENTIFY, forward_event)
     connection.send_result(msg["id"])
@@ -365,7 +392,9 @@ async def ws_subscribe_screensaver_toggle(hass: HomeAssistant, connection: webso
 
     @callback
     def forward_event(event) -> None:
-        connection.send_message(websocket_api.event_message(msg["id"], event.data))
+        record = entry_data["device_settings"]["devices"].get(event.data.get("device_id"))
+        if record is not None and profile.can_access_device(connection, record):
+            connection.send_message(websocket_api.event_message(msg["id"], event.data))
 
     connection.subscriptions[msg["id"]] = hass.bus.async_listen(DEVICE_SETTINGS_EVENT_SCREENSAVER_TOGGLE, forward_event)
     connection.send_result(msg["id"])
@@ -384,7 +413,9 @@ async def ws_subscribe_privacy_participation_toggle(hass: HomeAssistant, connect
 
     @callback
     def forward_event(event) -> None:
-        connection.send_message(websocket_api.event_message(msg["id"], event.data))
+        record = entry_data["device_settings"]["devices"].get(event.data.get("device_id"))
+        if record is not None and profile.can_access_device(connection, record):
+            connection.send_message(websocket_api.event_message(msg["id"], event.data))
 
     connection.subscriptions[msg["id"]] = hass.bus.async_listen(DEVICE_SETTINGS_EVENT_PRIVACY_PARTICIPATION_TOGGLE, forward_event)
     connection.send_result(msg["id"])
@@ -452,7 +483,7 @@ async def ws_push(hass: HomeAssistant, connection: websocket_api.ActiveConnectio
         return
     device_id = msg["device_id"].strip()
     if not device_id:
-        connection.send_error(msg["id"], "invalid_format", "device_id must be non-empty")
+        connection.send_error(msg["id"], "invalid_format", "device_id must contain 1 to 128 characters")
         return
     instance_id = (msg.get("instance_id") or "").strip()
     if instance_id:
@@ -490,7 +521,7 @@ async def ws_set_screensaver_enabled(hass: HomeAssistant, connection: websocket_
         return
     device_id = msg["device_id"].strip()
     if not device_id:
-        connection.send_error(msg["id"], "invalid_format", "device_id must be non-empty")
+        connection.send_error(msg["id"], "invalid_format", "device_id must contain 1 to 128 characters")
         return
     await shared.async_set_screensaver_enabled(hass, entry_data, device_id, msg["enabled"])
     device_settings_switch.notify_device(entry_data, device_id)
@@ -512,7 +543,7 @@ async def ws_set_privacy_participates(hass: HomeAssistant, connection: websocket
         return
     device_id = msg["device_id"].strip()
     if not device_id:
-        connection.send_error(msg["id"], "invalid_format", "device_id must be non-empty")
+        connection.send_error(msg["id"], "invalid_format", "device_id must contain 1 to 128 characters")
         return
     await shared.async_set_privacy_participates(hass, entry_data, device_id, msg["enabled"])
     device_settings_switch.notify_device_privacy_participates(entry_data, device_id)
@@ -592,7 +623,7 @@ async def ws_apply_preset(hass: HomeAssistant, connection: websocket_api.ActiveC
         return
     device_id = msg["device_id"].strip()
     if not device_id:
-        connection.send_error(msg["id"], "invalid_format", "device_id must be non-empty")
+        connection.send_error(msg["id"], "invalid_format", "device_id must contain 1 to 128 characters")
         return
     preset_settings = dict(preset.get("settings") or {})
     device_part = {k: v for k, v in preset_settings.items() if k in DEVICE_SCOPED_SETTINGS_FIELDS}
@@ -623,7 +654,7 @@ async def ws_identify(hass: HomeAssistant, connection: websocket_api.ActiveConne
         return
     device_id = msg["device_id"].strip()
     if not device_id:
-        connection.send_error(msg["id"], "invalid_format", "device_id must be non-empty")
+        connection.send_error(msg["id"], "invalid_format", "device_id must contain 1 to 128 characters")
         return
     hass.bus.async_fire(DEVICE_SETTINGS_EVENT_IDENTIFY, {"device_id": device_id})
     connection.send_result(msg["id"], {})

@@ -1,3 +1,5 @@
+> **Reduced fork — draft, not deployed.** See [REDUCED_PROFILE.md](REDUCED_PROFILE.md) for the actual supported features, security changes, tests, and deployment prerequisites. Grocy, the built-in Recipe Box/imports, external wishlists, Companion, Quick Add, and uploaded ZIP updates are disabled. The upstream documentation below includes features excluded from this fork. Mealie integration is planned separately.
+
 <h1 align="center">Family Hub</h1>
 
 <p align="center">

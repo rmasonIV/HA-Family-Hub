@@ -70,7 +70,8 @@
       }
     },
     "abort": {
-      "already_configured": "Family Hub ist bereits eingerichtet. Nutze Konfigurieren, um Erinnerungen zu ändern, eine Benachrichtigung zu testen oder ein Update zu installieren."
+      "already_configured": "Family Hub ist bereits eingerichtet. Nutze Konfigurieren, um Erinnerungen zu ändern, eine Benachrichtigung zu testen oder ein Update zu installieren.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     }
   },
   "options": {
@@ -171,7 +172,8 @@
       "no_backups": "Es gibt noch keine Snapshots des Einstellungsverlaufs - Family Hub legt den ersten automatisch um die nächste Mitternacht oder Mittagszeit an, oder sofort mit „Jetzt sichern“ in den Einstellungen der Kalenderkarte unter Entwicklerwerkzeuge. Wenn du früher etwas wiederherstellen musst, nutze stattdessen ein vollständiges Home-Assistant-Backup (Einstellungen > System > Backups).",
       "restore_done": "Snapshot vom {when} wiederhergestellt. Live verteilte Geräteeinstellungen: {devices}. Ein Sicherheits-Snapshot des Stands direkt vor dieser Wiederherstellung wurde automatisch gespeichert.",
       "export_done": "Snapshot vom {when} exportiert. {download_link} (der Link läuft in 5 Minuten ab), oder kopiere die Datei aus {path} per Samba/SSH/Terminal-Add-on.",
-      "import_done": "Snapshot vom {when} importiert. Er kann jetzt unter Snapshot wiederherstellen wiederhergestellt werden - der Import hier hat noch nichts geändert."
+      "import_done": "Snapshot vom {when} importiert. Er kann jetzt unter Snapshot wiederherstellen wiederhergestellt werden - der Import hier hat noch nichts geändert.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     },
     "error": {
       "update_failed": "Update konnte nicht installiert werden: {error}",

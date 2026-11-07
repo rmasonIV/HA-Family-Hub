@@ -70,7 +70,8 @@
       }
     },
     "abort": {
-      "already_configured": "Family Hub est déjà configuré. Utilisez Configurer pour modifier les rappels, tester une notification ou installer une mise à jour."
+      "already_configured": "Family Hub est déjà configuré. Utilisez Configurer pour modifier les rappels, tester une notification ou installer une mise à jour.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     }
   },
   "options": {
@@ -171,7 +172,8 @@
       "no_backups": "Aucun instantané de l'historique des paramètres n'existe encore - Family Hub prend le premier automatiquement au prochain minuit ou midi, ou tout de suite avec « Sauvegarder maintenant » dans les Paramètres de la carte calendrier > Outils de développement. Si vous devez restaurer plus tôt, utilisez plutôt une sauvegarde complète de Home Assistant (Paramètres > Système > Sauvegardes).",
       "restore_done": "Instantané du {when} restauré. Paramètres par appareil envoyés en direct : {devices}. Un instantané de sécurité de l'état juste avant cette restauration a été enregistré automatiquement.",
       "export_done": "Instantané du {when} exporté. {download_link} (le lien expire dans 5 minutes), ou copiez le fichier depuis {path} via Samba/SSH/un module Terminal.",
-      "import_done": "Instantané du {when} importé. Il peut maintenant être restauré depuis Restaurer un instantané - l'importer ici n'a encore rien changé."
+      "import_done": "Instantané du {when} importé. Il peut maintenant être restauré depuis Restaurer un instantané - l'importer ici n'a encore rien changé.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     },
     "error": {
       "update_failed": "Impossible d'installer la mise à jour : {error}",

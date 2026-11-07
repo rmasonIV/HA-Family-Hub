@@ -619,7 +619,7 @@ async def _effective_actor(
     if token:
         _prune_kiosk_elevations(entry_data)
         rec = _kiosk_elevations(entry_data).get(token)
-        if rec:
+        if rec and rec.get("connection") is connection:
             user_id = rec["user_id"]
             return user_id, await _ha_user_is_admin(hass, user_id)
     return _actor_id(connection), _is_admin(connection)
@@ -1924,6 +1924,7 @@ async def ws_kiosk_elevate(hass: HomeAssistant, connection: websocket_api.Active
     _kiosk_elevations(entry_data)[token] = {
         "user_id": msg["user_id"],
         "expires_at": time.time() + KIOSK_ELEVATION_TTL_SECONDS,
+        "connection": connection,
     }
     is_admin = await _ha_user_is_admin(hass, msg["user_id"])
     name = await _user_display_name(hass, msg["user_id"])
@@ -3852,18 +3853,14 @@ async def ws_privacy_mode_subscribe(hass: HomeAssistant, connection: websocket_a
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/privacy_mode/set", vol.Required("enabled"): bool})
 @websocket_api.async_response
 async def ws_privacy_mode_set(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
-    """Open to any authenticated connection, with NO permission check at
-    all, in either direction - the card's own "more" menu uses this to
-    turn privacy mode ON (nobody needs special privilege to make the
-    screen MORE private), and the switch.family_hub_privacy_mode entity's
-    own turn_on/turn_off call privacy_mode_shared.async_set_privacy_mode
-    directly rather than through this command, but with the exact same "no
-    validation" result either way - see this feature's own module comment
-    above for why. Turning privacy mode OFF from the card's own on-screen
-    lock is deliberately a SEPARATE command (ws_privacy_mode_disable_with_
-    pin below) that the card chooses to call instead of this one for that
-    one flow - this command staying ungated is what the backend switch
-    entity needs, not a hole in the on-screen unlock flow."""
+    """Any authenticated caller can enable privacy; disabling requires its real HA account permission. The PIN unlock endpoint is an alternative checked path."""
+    if not msg["enabled"]:
+        entry_data = _entry_data_or_error(hass, connection, msg["id"])
+        if entry_data is None:
+            return
+        if not _has_permission(entry_data, connection, PERMISSION_TOGGLE_PRIVACY_MODE):
+            connection.send_error(msg["id"], "forbidden", "You cannot disable privacy mode.")
+            return
     entry_data = _entry_data_or_error(hass, connection, msg["id"])
     if entry_data is None:
         return

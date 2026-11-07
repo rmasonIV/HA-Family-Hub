@@ -70,7 +70,8 @@
       }
     },
     "abort": {
-      "already_configured": "Family Hub è già configurato. Usa Configura per modificare i promemoria, provare una notifica o installare un aggiornamento."
+      "already_configured": "Family Hub è già configurato. Usa Configura per modificare i promemoria, provare una notifica o installare un aggiornamento.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     }
   },
   "options": {
@@ -171,7 +172,8 @@
       "no_backups": "Non esistono ancora istantanee della cronologia impostazioni - Family Hub crea la prima automaticamente alla prossima mezzanotte o mezzogiorno, oppure subito con «Esegui backup ora» nelle Impostazioni della scheda calendario > Strumenti per sviluppatori. Se devi ripristinare prima, usa invece un backup completo di Home Assistant (Impostazioni > Sistema > Backup).",
       "restore_done": "Istantanea del {when} ripristinata. Impostazioni per dispositivo inviate in tempo reale: {devices}. Un'istantanea di sicurezza della situazione subito prima di questo ripristino è stata salvata automaticamente.",
       "export_done": "Istantanea del {when} esportata. {download_link} (il link scade tra 5 minuti), oppure copia il file da {path} tramite Samba/SSH/un componente aggiuntivo Terminal.",
-      "import_done": "Istantanea del {when} importata. Ora è disponibile in Ripristina un'istantanea - importarla qui non ha ancora cambiato nulla."
+      "import_done": "Istantanea del {when} importata. Ora è disponibile in Ripristina un'istantanea - importarla qui non ha ancora cambiato nulla.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     },
     "error": {
       "update_failed": "Impossibile installare l'aggiornamento: {error}",
