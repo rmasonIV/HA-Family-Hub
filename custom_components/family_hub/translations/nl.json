@@ -70,7 +70,8 @@
       }
     },
     "abort": {
-      "already_configured": "Family Hub is al geconfigureerd. Gebruik Configureren om herinneringsinstellingen te wijzigen, een melding te testen of een update te installeren."
+      "already_configured": "Family Hub is al geconfigureerd. Gebruik Configureren om herinneringsinstellingen te wijzigen, een melding te testen of een update te installeren.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     }
   },
   "options": {
@@ -171,7 +172,8 @@
       "no_backups": "Er zijn nog geen momentopnamen van de instellingengeschiedenis - Family Hub maakt de eerste automatisch om de volgende middernacht of 12 uur 's middags, of meteen met “Nu back-uppen” in de Instellingen van de kalenderkaart > Ontwikkelaarstools. Moet je eerder herstellen, gebruik dan een volledige Home Assistant-back-up (Instellingen > Systeem > Back-ups).",
       "restore_done": "Momentopname van {when} teruggezet. Live doorgestuurde apparaatinstellingen: {devices}. Een veiligheidskopie van wat je vlak voor deze terugzetting had, is automatisch opgeslagen.",
       "export_done": "Momentopname van {when} geëxporteerd. {download_link} (de link verloopt na 5 minuten), of kopieer het bestand uit {path} via Samba/SSH/een Terminal-add-on.",
-      "import_done": "Momentopname van {when} geïmporteerd. Je kunt die nu terugzetten via Een momentopname terugzetten - het importeren hier heeft nog niets veranderd."
+      "import_done": "Momentopname van {when} geïmporteerd. Je kunt die nu terugzetten via Een momentopname terugzetten - het importeren hier heeft nog niets veranderd.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     },
     "error": {
       "update_failed": "Kon de update niet installeren: {error}",

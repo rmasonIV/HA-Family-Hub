@@ -713,10 +713,7 @@ var __fhSweep = function (root) {
 (function () {
   if (window.__familyCalendarFontLoaded) return;
   window.__familyCalendarFontLoaded = true;
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = "https://fonts.googleapis.com/css2?family=Varela+Round&display=swap";
-  document.head.appendChild(link);
+  // Use installed/system fonts; no automatic external font request.
 })();
 
 // A fixed accent color for reminder rows - reminders aren't tied to any one calendar (and so have no calendar color of their own)

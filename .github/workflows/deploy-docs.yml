@@ -1,17 +1,10 @@
 name: Deploy docs site to GitHub Pages
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'website/**'
-      - '.github/workflows/deploy-docs.yml'
   workflow_dispatch: {}
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -38,6 +31,10 @@ jobs:
           path: website/build
 
   deploy:
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     needs: build
     runs-on: ubuntu-latest
     environment:

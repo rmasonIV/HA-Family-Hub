@@ -110,12 +110,11 @@ _FEATURE_CHORES = "chores"
 _FEATURE_GROCY = "grocy"
 _FEATURE_DIGEST = "digest"
 # _FEATURE_REMINDERS ("Reminders & Meal Plan to-do lists") is gone - it only ever gated async_step_todo_lists, which is gone too
-_ALL_FEATURES = (_FEATURE_CHORES, _FEATURE_GROCY, _FEATURE_DIGEST)
+_ALL_FEATURES = (_FEATURE_CHORES, _FEATURE_DIGEST)
 _FEATURES_FIELD = "setup_features"
 
 _FEATURE_LABELS = {
     _FEATURE_CHORES: "Chores, Rewards, Routines & Goals",
-    _FEATURE_GROCY: "Grocy",
     _FEATURE_DIGEST: "Daily Digest",
 }
 
@@ -386,7 +385,7 @@ class FamilyHubConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     monitored.append(entity)
             self._collected_options[CONF_CALENDARS] = monitored
             self._collected_options[CONF_INITIAL_CALENDARS] = [e for e in picked if e not in member_calendars]
-            return await self.async_step_grocy()
+            return await self.async_step_notifications()
 
         return self.async_show_form(
             step_id="calendars",
@@ -394,23 +393,7 @@ class FamilyHubConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_grocy(self, user_input: dict[str, Any] | None = None):
-        """Optional Grocy connection, asked up front instead of only being discoverable later via Configure > Grocy - reuses that exact same schema"""
-        if not self._feature_selected(_FEATURE_GROCY):
-            return await self.async_step_notifications()
-
-        if user_input is not None:
-            url = (user_input.get(CONF_GROCY_URL) or "").strip().rstrip("/")
-            api_key = (user_input.get(CONF_GROCY_API_KEY) or "").strip()
-            if url:
-                self._collected_options[CONF_GROCY_URL] = url
-            if api_key:
-                self._collected_options[CONF_GROCY_API_KEY] = api_key
-            return await self.async_step_notifications()
-
-        return self.async_show_form(
-            step_id="grocy",
-            data_schema=_build_grocy_schema(self._collected_options),
-        )
+        return self.async_abort(reason="feature_disabled")
 
     # async_step_todo_lists ("Meal Plan & Reminders lists") is gone
 
@@ -607,7 +590,7 @@ class FamilyHubOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_menu(
             step_id="init",
             menu_options=[
-                "settings", "reminders", "grocy", "test_notify", "upcoming", "restore_backup", "update",
+                "settings", "reminders", "test_notify", "upcoming", "restore_backup",
             ],
         )
 
@@ -628,31 +611,7 @@ class FamilyHubOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_grocy(self, user_input: dict[str, Any] | None = None):
-        """Connect Family Hub to a self-hosted Grocy instance so the Meal
-        Suggestions box can offer "Add from Grocy" - pulling in a recipe's
-        name plus a link back to view it in Grocy. Entirely optional; leave
-        both fields blank if you don't use Grocy.
-
-        The API key lives here (private integration options), not in the
-        card's own Settings - that JSON blob is visible via Home Assistant's
-        own To-do UI, which is no place for a credential.
-        """
-        if user_input is not None:
-            url = (user_input.get(CONF_GROCY_URL) or "").strip().rstrip("/")
-            api_key = (user_input.get(CONF_GROCY_API_KEY) or "").strip()
-            return self.async_create_entry(
-                title="",
-                data={
-                    **self.config_entry.options,
-                    CONF_GROCY_URL: url,
-                    CONF_GROCY_API_KEY: api_key,
-                },
-            )
-
-        return self.async_show_form(
-            step_id="grocy",
-            data_schema=_build_grocy_schema(dict(self.config_entry.options)),
-        )
+        return self.async_abort(reason="feature_disabled")
 
     async def async_step_test_notify(self, user_input: dict[str, Any] | None = None):
         """Fire a one-off notification at any registered notify.* target right now, independent of calendars/reminders"""
@@ -894,35 +853,4 @@ class FamilyHubOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_update(self, user_input: dict[str, Any] | None = None):
-        if user_input is not None:
-            try:
-                zip_bytes = await self.hass.async_add_executor_job(
-                    _read_uploaded_zip_bytes, self.hass, user_input[CONF_UPDATE_FILE]
-                )
-                integration_dir = self.hass.config.path("custom_components", DOMAIN)
-                # Backups are kept outside custom_components/ on purpose - see the docstring on install_update_from_zip for why a sibling folder in there can
-                backup_root = self.hass.config.path("family_hub_backups")
-                result = await self.hass.async_add_executor_job(
-                    updater.install_update_from_zip, integration_dir, zip_bytes, backup_root
-                )
-            except updater.UpdateError as err:
-                return self.async_show_form(
-                    step_id="update",
-                    data_schema=_UPDATE_SCHEMA,
-                    errors={"base": "update_failed"},
-                    description_placeholders={"error": str(err)},
-                )
-            except Exception as err:  # noqa: BLE001 - never leave the user with a raw traceback
-                return self.async_show_form(
-                    step_id="update",
-                    data_schema=_UPDATE_SCHEMA,
-                    errors={"base": "update_failed"},
-                    description_placeholders={"error": f"Unexpected error: {err}"},
-                )
-
-            return self.async_abort(
-                reason="update_installed",
-                description_placeholders={"version": str(result.get("version", "unknown"))},
-            )
-
-        return self.async_show_form(step_id="update", data_schema=_UPDATE_SCHEMA)
+        return self.async_abort(reason="feature_disabled")

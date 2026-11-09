@@ -130,6 +130,7 @@ class FamilyHubDevicePrivacyParticipatesSwitch(SwitchEntity):
         shared.safe_write_ha_state(self)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        await privacy_mode_shared.async_require_privacy_unlock(self.hass, self._entry_data, self._context)
         await shared.async_set_privacy_participates(self.hass, self._entry_data, self._device_id, False)
         shared.safe_write_ha_state(self)
 
@@ -157,6 +158,7 @@ class FamilyHubPrivacyModeSwitch(SwitchEntity):
         shared.safe_write_ha_state(self)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        await privacy_mode_shared.async_require_privacy_unlock(self.hass, self._entry_data, self._context)
         await privacy_mode_shared.async_set_privacy_mode(self.hass, self._entry_data, False)
         shared.safe_write_ha_state(self)
 

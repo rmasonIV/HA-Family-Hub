@@ -70,7 +70,8 @@
       }
     },
     "abort": {
-      "already_configured": "O Family Hub já está configurado. Use Configurar para alterar os lembretes, testar uma notificação ou instalar uma atualização."
+      "already_configured": "O Family Hub já está configurado. Use Configurar para alterar os lembretes, testar uma notificação ou instalar uma atualização.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     }
   },
   "options": {
@@ -171,7 +172,8 @@
       "no_backups": "Ainda não existem snapshots do histórico de configurações - o Family Hub cria o primeiro automaticamente na próxima meia-noite ou meio-dia, ou na hora com “Fazer backup agora” nas Configurações do cartão de calendário > Ferramentas de desenvolvedor. Se precisar recuperar antes, use um backup completo do Home Assistant (Configurações > Sistema > Backups).",
       "restore_done": "Snapshot de {when} restaurado. Configurações por dispositivo enviadas ao vivo: {devices}. Um snapshot de segurança do que você tinha logo antes desta restauração foi salvo automaticamente.",
       "export_done": "Snapshot de {when} exportado. {download_link} (o link expira em 5 minutos), ou copie o arquivo de {path} via Samba/SSH/um complemento Terminal.",
-      "import_done": "Snapshot de {when} importado. Agora ele pode ser restaurado em Restaurar um snapshot - importá-lo aqui ainda não mudou nada."
+      "import_done": "Snapshot de {when} importado. Agora ele pode ser restaurado em Restaurar um snapshot - importá-lo aqui ainda não mudou nada.",
+      "feature_disabled": "This feature is disabled in this Family Hub version."
     },
     "error": {
       "update_failed": "Não foi possível instalar a atualização: {error}",

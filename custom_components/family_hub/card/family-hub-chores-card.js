@@ -713,10 +713,7 @@ var __fhSweep = function (root) {
 (function () {
   if (window.__familyCalendarFontLoaded) return;
   window.__familyCalendarFontLoaded = true;
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = "https://fonts.googleapis.com/css2?family=Varela+Round&display=swap";
-  document.head.appendChild(link);
+  // Use installed/system fonts; no automatic external font request.
 })();
 
 // Shared, dashboard-wide screensaver controller - lets this card bring the Family Hub Auto Screen Saver to its own dashboard

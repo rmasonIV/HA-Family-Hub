@@ -762,7 +762,19 @@ class Layer {
     this.parent = parent;
     this.el = document.createElement("div");
     this.el.className = "fh-ss-layer" + (this.opts.preview ? " preview" : "");
-    this.el.innerHTML = `<style>${CSS}</style><div class="fh-ss-veil"></div><div class="fh-ss-scrim"></div><div class="fh-ss-drift">${ANCHORS.map((a) => `<div class="fh-ss-zone z-${a}" data-zone="${a}"></div>`).join("")}</div>`;
+    this.el.innerHTML = `<style>
+/* Reduced profile: excluded feature controls remain unavailable in old layouts. */
+.quick-add-menu-item, .loved-menu-item, .suggestions-menu-item,
+.grocy-shopping-list-btn, .grocy-expiring-btn, .grocy-low-stock-btn,
+.pick-loved-btn, .pick-recipe-btn, .btn-add-additional-recipe-box,
+.loved-btn, .suggestions-btn, .recipe-import-open-btn, .recipe-import-btn,
+.grocy-expiring-enabled-btn, .grocy-low-stock-enabled-btn,
+.notify-profile-companion, .notify-profile-wishlist-links,
+.notify-profile-companion-toggle, .notify-profile-companion-section,
+.recipe-import-overlay, .dish-detail-overlay, .loved-overlay {
+ display: none !important;
+}
+${CSS}</style><div class="fh-ss-veil"></div><div class="fh-ss-scrim"></div><div class="fh-ss-drift">${ANCHORS.map((a) => `<div class="fh-ss-zone z-${a}" data-zone="${a}"></div>`).join("")}</div>`;
     this._applyStill();
     parent.appendChild(this.el);
     this.zones = {};
@@ -1757,10 +1769,7 @@ window.__familyCalendarApplyScrollLock = (locked) => window.__familyCalendarSetS
 (function () {
 if (window.__familyCalendarFontLoaded) return;
 window.__familyCalendarFontLoaded = true;
-const link = document.createElement("link");
-link.rel = "stylesheet";
-link.href = "https://fonts.googleapis.com/css2?family=Varela+Round&display=swap";
-document.head.appendChild(link);
+// Use installed/system fonts; no automatic external font request.
 })();
 // Privacy mode's lock overlay/unlock modal live at document.body level, same as the screensaver overlay
 (function () {
@@ -2151,15 +2160,9 @@ locked: true,
 { key: "wifi", icon: "\u{1F4F6}", label: "Guest Wi-Fi", heading: "Guest Wi-Fi", text: "", qrType: "wifi", qrFields: { ssid: "", password: "", security: "WPA", hidden: "0", show: "1" } },
 ];
 const FH_MORE_MENU_BUILTINS = [
-  { key: "quick_add", cls: "quick-add-menu-item" },
-  { key: "recipe_box", cls: "loved-menu-item" },
   // 2026.11.1: Suggestions left the top bar for the More menu's Kitchen group
-  { key: "suggestions", cls: "suggestions-menu-item" },
   { key: "templates", cls: "templates-btn" },
   { key: "print", cls: "print-btn" },
-  { key: "shopping_list", cls: "grocy-shopping-list-btn" },
-  { key: "expiring_soon", cls: "grocy-expiring-btn" },
-  { key: "low_stock", cls: "grocy-low-stock-btn" },
   { key: "daily_digest", cls: "daily-digest-menu-item" },
   { key: "privacy_mode", cls: "privacy-mode-menu-item" },
 ];
@@ -2467,52 +2470,12 @@ this._updateRatingButtons();
 this._hideMealNameSuggestion();
 },
 async _fetchRecipes() {
-if (!this._hass) return;
-if (!this._recipesCachePainted) {
+// Ignore legacy browser caches and catalog entities in this reduced profile.
+this._recipes = [];
 this._recipesCachePainted = true;
-const cached = window.__familyHubDataCache.get("recipes");
-if (Array.isArray(cached)) {
-this._recipes = cached;
-this._renderLoved();
-if (this._queueRenderGrid) this._queueRenderGrid(); else this._renderGrid(); // the Recipe Box card shares this method and has no queue
-}
-}
-try {
-const result = await this._hass.connection.sendMessagePromise({ type: "family_hub/get_recipes" });
-if (!result.migrated) {
-const items = this._config.recipe_entity ? await this._getItems(this._config.recipe_entity) : [];
-this._recipes = items.map((it) => {
-const parsed = this._parseDishDescription(it.description);
-return {
-uid: it.uid,
-name: it.summary,
-description: parsed.description,
-link: parsed.link,
-rating: parsed.rating,
-grocyRecipeId: parsed.grocyRecipeId,
-category: parsed.category,
-image: parsed.image,
-};
-});
-await this._persistRecipes();
-} else {
-this._recipes = result.recipes || [];
-}
-} catch (e) {
-// 2026.11.1.10: a failed load keeps what's already showing - an empty list here could be saved back over the whole Recipe Box
-if (!Array.isArray(this._recipes)) this._recipes = [];
-}
-window.__familyHubDataCache.set("recipes", this._recipes);
-this._renderLoved();
-if (this._queueRenderGrid) this._queueRenderGrid(); else this._renderGrid(); // the Recipe Box card shares this method and has no queue
 },
 async _persistRecipes() {
-if (!this._hass) return;
-try {
-// removed_grocy_ids: Grocy recipes deleted here on purpose, so the backend doesn't keep them as "just synced" (see _ws_set_recipes)
-await this._hass.connection.sendMessagePromise({ type: "family_hub/set_recipes", recipes: this._recipes, removed_grocy_ids: Array.from(this._removedGrocyIds || []) });
-} catch (e) {
-}
+throw new Error("The built-in Recipe Box is disabled; Mealie support is planned separately.");
 },
 async _fetchSuggestions() {
 if (!this._hass) return;
@@ -2769,6 +2732,8 @@ await this._addSuggestion(recipe.name, recipe.description, recipe.link, recipe.g
 this._renderLoved();
 },
 _openLoved(pickerMode) {
+return; // Feature disabled by the reduced profile.
+
 // pickerMode is now also allowed to be the string "additional" (the day/menu editor's "+ From Recipe Box" additional-recipe button
 this._pickerMode = pickerMode === "additional" ? "additional" : !!pickerMode;
 this._lovedSearchTerm = "";
@@ -3213,34 +3178,17 @@ blocks.push({ type: "step", text: content });
 return blocks;
 },
 _fhBlocksToPreparationHtml(blocks) {
-return (blocks || [])
-.map((b) => {
-if (b.type === "header") return `<h4>${b.text || ""}</h4>`;
+// Kept as a safe compatibility renderer; recipe features are disabled.
+return (Array.isArray(blocks) ? blocks : []).slice(0, 200).map((b) => {
+if (!b || typeof b !== "object") return "";
 if (b.type === "divider") return "<hr>";
-if (b.type === "image") return `<p><img src="${(b.url || "").replace(/"/g, "&quot;")}"></p>`;
-return `<p>${b.text || ""}</p>`;
-})
-.join("");
+if (b.type === "image") return "";
+const tag = b.type === "header" ? "h4" : "p";
+return `<${tag}>${__fhEsc(String(b.text || ""))}</${tag}>`;
+}).join("");
 },
 _fhRenderStepBlocksHtml(blocks, checkedSteps) {
-if (!blocks || !blocks.length) return "";
-checkedSteps = checkedSteps || new Set();
-let stepNum = 0;
-const rows = blocks.map((b, idx) => {
-if (b.type === "header") {
-return `<div class="grocy-recipe-step-header">${b.text || ""}</div>`;
-}
-if (b.type === "divider") {
-return `<hr class="grocy-recipe-step-divider" />`;
-}
-if (b.type === "image") {
-return `<div class="grocy-recipe-step-image-wrap"><img class="grocy-recipe-step-image" src="${b.url || ""}" /></div>`;
-}
-stepNum++;
-const checked = checkedSteps.has(idx) ? " checked-off" : "";
-return `<label class="grocy-recipe-instruction-row${checked}" data-idx="${idx}"><input type="checkbox" class="grocy-recipe-instruction-check"${checked ? " checked" : ""} /><span class="grocy-recipe-instruction-badge">${stepNum}</span><span class="grocy-recipe-instruction-text">${b.text || ""}</span></label>`;
-});
-return `<div data-fh-t="text.instructions" class="grocy-recipe-instructions-title">${__fhT("text.instructions", "Instructions", null, "h")}</div>` + rows.join("");
+return this._fhBlocksToPreparationHtml(blocks);
 },
 async _fhBlobToUploadFromFile(file) {
 let blob = file;
@@ -3353,7 +3301,7 @@ if (b.type === "header") {
 return (
 `<div class="fh-step-editor-row fh-step-editor-header-row" data-idx="${idx}">` +
 dragHandle +
-`<input data-fh-placeholder="text.section_header" type="text" class="fh-step-editor-header-input" data-idx="${idx}" value="${this._fhEscapeHtml(b.text || "")}" placeholder="${__fhT("text.section_header", "Section header", null, "h")}" />` +
+`<input data-fh-placeholder="text.section_header" type="text" class="fh-step-editor-header-input" data-idx="${idx}" value="${__fhEsc(String(b.text || ""))}" placeholder="${__fhT("text.section_header", "Section header", null, "h")}" />` +
 controls +
 `</div>`
 );
@@ -3362,13 +3310,13 @@ if (b.type === "divider") {
 return `<div class="fh-step-editor-row fh-step-editor-divider-row" data-idx="${idx}">${dragHandle}<span class="fh-step-editor-divider-label">&mdash; divider &mdash;</span>${controls}</div>`;
 }
 if (b.type === "image") {
-return `<div class="fh-step-editor-row fh-step-editor-image-row" data-idx="${idx}">${dragHandle}<img class="fh-step-editor-image-preview" src="${b.url || ""}" />${controls}</div>`;
+return `<div class="fh-step-editor-row fh-step-editor-image-row" data-idx="${idx}">${dragHandle}<img class="fh-step-editor-image-preview" src="" />${controls}</div>`;
 }
 return (
 `<div class="fh-step-editor-row fh-step-editor-step-row" data-idx="${idx}">` +
 dragHandle +
 `<span class="fh-step-editor-step-num">${idx + 1}</span>` +
-`<textarea data-fh-placeholder="text.step_text" class="fh-step-editor-text-input" data-idx="${idx}" placeholder="${__fhT("text.step_text", "Step text", null, "h")}">${b.text || ""}</textarea>` +
+`<textarea data-fh-placeholder="text.step_text" class="fh-step-editor-text-input" data-idx="${idx}" placeholder="${__fhT("text.step_text", "Step text", null, "h")}">${__fhEsc(String(b.text || ""))}</textarea>` +
 controls +
 `</div>`
 );
@@ -3738,173 +3686,13 @@ this._renderGrocyRecipeDescription();
 // Recomputes the description/instructions block against the current servings ratio - mirrors _renderGrocyRecipeIngredients
 _renderGrocyRecipeDescription() {
 if (!this._root) return;
-const descEl = this._grocyViewerOverlay().querySelector(".grocy-recipe-viewer-description");
-const instructionsEl = this._grocyViewerOverlay().querySelector(".grocy-recipe-viewer-instructions");
-if (!descEl) return;
-const raw = this._grocyRecipeViewerRawDescription || "";
-if (!raw) {
-if (instructionsEl) instructionsEl.innerHTML = "";
-descEl.innerHTML = `<div data-fh-t="text.no_instructions_added_in_grocy" class="loved-empty">${__fhT("text.no_instructions_added_in_grocy", "No instructions added in Grocy.", null, "h")}</div>`;
+const overlay = this._grocyViewerOverlay();
+for (const selector of [".grocy-recipe-viewer-description", ".grocy-recipe-viewer-instructions"]) {
+const node = overlay.querySelector(selector);
+if (node) node.textContent = "The built-in Recipe Box is disabled in this version.";
+}
 this._grocyRecipeViewerStepBlocks = [];
-return;
-}
-const baseServings = this._grocyRecipeViewerBaseServings || 1;
-const servings = this._grocyRecipeViewerServings || baseServings;
-const ratio = baseServings > 0 ? servings / baseServings : 1;
-let html = this._scaleIngredientsDescriptionHtml(raw, ratio);
-
-// Recipes imported via this card's own "Import a recipe from a link" flow (_createImportedGrocyRecipe
-const stepsMatch = html.match(/<p><strong(?:>Preparation| data-fh-t="text\.preparation">[^<]*)<\/strong><\/p>([\s\S]*?)(?=<p><strong>|$)/i);
-const blocks = stepsMatch ? this._fhParsePreparationBlocks(stepsMatch[1]) : [];
-this._grocyRecipeViewerStepBlocks = blocks;
-
-if (instructionsEl) {
-instructionsEl.innerHTML = this._fhRenderStepBlocksHtml(blocks, this._grocyRecipeViewerCheckedSteps);
-instructionsEl.querySelectorAll(".grocy-recipe-instruction-row").forEach((row) => {
-row.querySelector(".grocy-recipe-instruction-check").addEventListener("change", () => {
-const idx = Number(row.dataset.idx);
-if (!this._grocyRecipeViewerCheckedSteps) this._grocyRecipeViewerCheckedSteps = new Set();
-if (row.querySelector(".grocy-recipe-instruction-check").checked) this._grocyRecipeViewerCheckedSteps.add(idx);
-else this._grocyRecipeViewerCheckedSteps.delete(idx);
-row.classList.toggle("checked-off", row.querySelector(".grocy-recipe-instruction-check").checked);
-});
-});
-}
-
-// Once a block has its own dedicated element above (structured ingredients list, numbered Instructions)
-// 2026.11.1.10: the list can have sections - an <h4> heading before each section's own list, or a heading line
-// inside the list itself ("<li><strong>Sauce</strong></li>", "<li>For the sauce:</li>") - shown as section headings
-const ingredientsBlockMatch = (() => {
-const m = html.match(/<p><strong(?:>Ingredients| data-fh-t="text\.ingredients">[^<]*)<\/strong><\/p>((?:\s*(?:<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>|<p>\s*<(?:strong|b|em)>[^<]*<\/(?:strong|b|em)>\s*:?\s*<\/p>)?\s*<ul>[\s\S]*?<\/ul>)+)/i);
-if (!m) return null;
-const isHead = (inner) => {
-const text = inner.replace(/<[^>]+>/g, "").trim();
-if (!text || text.length > 60 || /\d/.test(text)) return null;
-const bold = /^\s*<(strong|b)>[\s\S]*<\/\1>\s*:?\s*$/i.test(inner);
-if (bold || /:$/.test(text) || (/[A-Z]{3}/.test(text) && text === text.toUpperCase()) || /^for (the )?\S/i.test(text)) {
-return text.replace(/:$/, "").replace(/^for (the )?/i, "").trim() || null;
-}
-return null;
-};
-const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
-let out = "";
-const re = /<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>|<p>\s*<(?:strong|b|em)>([^<]*)<\/(?:strong|b|em)>\s*:?\s*<\/p>|<ul>([\s\S]*?)<\/ul>/gi;
-let t;
-while ((t = re.exec(m[1]))) {
-const head = t[1] !== undefined ? t[1] : t[2];
-if (head !== undefined) {
-const name = head.replace(/<[^>]+>/g, "").replace(/:\s*$/, "").replace(/^for (the )?/i, "").trim();
-if (name) out += `<div class="grocy-recipe-ingredient-group">${cap(name)}</div>`;
-continue;
-}
-let items = "";
-t[3].replace(/<li>([\s\S]*?)<\/li>/gi, (full, inner) => {
-const name = isHead(inner);
-if (name) {
-if (items) { out += `<ul>${items}</ul>`; items = ""; }
-out += `<div class="grocy-recipe-ingredient-group">${cap(name)}</div>`;
-} else {
-items += full;
-}
-return full;
-});
-if (items) out += `<ul>${items}</ul>`;
-}
-return [m[0], out];
-})();
-if (ingredientsBlockMatch) {
-const accordionHtml =
-`<div class="grocy-recipe-ingredients-accordion">` +
-`<button type="button" class="accordion-toggle recipe-viewer-ingredients-toggle" data-target="recipe-viewer-ingredients-body">` +
-`<span data-fh-t="text.written_out_ingredients_list" class="theme-section-label">${__fhT("text.written_out_ingredients_list", "Written-out ingredients list", null, "h")}</span>` +
-`<span class="accordion-chevron">&#9660;</span>` +
-`</button>` +
-`<div class="accordion-body" id="recipe-viewer-ingredients-body">${ingredientsBlockMatch[1]}</div>` +
-`</div>`;
-html = html.replace(ingredientsBlockMatch[0], accordionHtml);
-}
-if (stepsMatch) {
-html = html.replace(stepsMatch[0], "");
-}
-// The Prep/Cook line is now always shown as its own stat pills whenever it exists at all (see _renderGrocyRecipeDetail)
-html = html.replace(/<p>[\s\S]*?<strong>(?:Prep|Cook):<\/strong>[\s\S]*?<\/p>/i, "");
-html = html.trim();
-descEl.innerHTML = html || `<div data-fh-t="text.no_additional_notes" class="loved-empty">${__fhT("text.no_additional_notes", "No additional notes.", null, "h")}</div>`;
-const ingredientsToggle = descEl.querySelector(".recipe-viewer-ingredients-toggle");
-if (ingredientsToggle) {
-ingredientsToggle.addEventListener("click", () => {
-const body = descEl.querySelector(`#${ingredientsToggle.dataset.target}`);
-ingredientsToggle.classList.toggle("open");
-if (body) body.classList.toggle("open");
-});
-}
 },
-// Save step for the "Edit Steps" button (see _fhOpenStepEditor)
-async _saveGrocyRecipeStepEdits(recipeId, blocks, reopenName, reopenLink, reopenSourceRecipe) {
-if (!this._hass || !recipeId) return;
-// the "Edit Steps" button closes the (possibly document.body -portal'd) Grocy Recipe Viewer before opening this plain shadow-root step editor
-const reopenViewer = () => {
-this._openGrocyRecipeViewer(recipeId, reopenName, reopenLink, false, null, reopenSourceRecipe);
-};
-let detailResult;
-try {
-detailResult = await this._hass.connection.sendMessagePromise({ type: "family_hub/get_grocy_recipe_detail", recipe_id: recipeId });
-} catch (e) {
-window.alert(__fhT("text.couldn_t_reach_the_backend_steps_weren", "Couldn't reach the backend - steps weren't saved."));
-reopenViewer();
-return;
-}
-if (detailResult.configured === false || !detailResult.recipe) {
-window.alert(detailResult.error || __fhT("text.couldn_t_load_this_recipe_from_grocy", "Couldn't load this recipe from Grocy - steps weren't saved."));
-reopenViewer();
-return;
-}
-const detail = detailResult.recipe;
-const rawDescription = detail.description || "";
-const ingredients = (detail.ingredients || []).map((ing) => {
-const amountText = ing.variable_amount || (typeof ing.amount_value === "number" ? String(ing.amount_value) : "");
-const raw = (ing.note && ing.note.trim()) || `${amountText} ${ing.product || ""}`.trim() || ing.product || "";
-return {
-raw,
-amount_text: amountText,
-amount: typeof ing.amount_value === "number" && isFinite(ing.amount_value) ? ing.amount_value : null,
-not_check_stock_fulfillment: !!ing.not_check_stock_fulfillment,
-product_id: ing.product_id || null,
-unit_id: ing.qu_id || null,
-group: String(ing.group || ""),
-};
-});
-const stepsMatch = rawDescription.match(/<p><strong(?:>Preparation| data-fh-t="text\.preparation">[^<]*)<\/strong><\/p>([\s\S]*?)(?=<p><strong>|$)/i);
-const newPrepHtml = blocks.length ? `<p><strong>Preparation</strong></p>${this._fhBlocksToPreparationHtml(blocks)}` : "";
-let newDescription;
-if (stepsMatch) {
-newDescription = rawDescription.slice(0, stepsMatch.index) + newPrepHtml + rawDescription.slice(stepsMatch.index + stepsMatch[0].length);
-} else {
-newDescription = rawDescription + newPrepHtml;
-}
-let result;
-try {
-result = await this._hass.connection.sendMessagePromise({
-type: "family_hub/update_grocy_recipe",
-recipe_id: recipeId,
-name: detail.name || "",
-description: newDescription,
-servings: detail.base_servings || 1,
-ingredients,
-});
-} catch (e) {
-window.alert(__fhT("text.couldn_t_reach_the_backend_steps_weren", "Couldn't reach the backend - steps weren't saved."));
-reopenViewer();
-return;
-}
-if (result.configured === false || !result.success) {
-window.alert((result && result.error) || __fhT("text.couldn_t_save_those_steps", "Couldn't save those steps."));
-reopenViewer();
-return;
-}
-reopenViewer();
-},
-// Finds the "Ingredients" <ul> block _createImportedGrocyRecipe writes into a recipe's description (raw scraped lines like "2 cups flour"
 _scaleIngredientsDescriptionHtml(html, ratio) {
 if (!html) return html;
 // 2026.11.1.10: a recipe with sections has one list per section, each under its own <h4> heading - all of them scale
@@ -18341,6 +18129,10 @@ static _companionDefaults() {
 return { wake: "07:00", wakeWeekend: "08:00", bedtime: "19:30", bedtimeWeekend: "20:30", afternoon: "15:30", windDown: 30, wakeWindow: 30, alarm: "chime", sound: "off", soundVolume: 40, nightScreen: "dim", light: "", nightlight: true, sunrise: true, sunriseMinutes: 20, okToWake: true, wakeLight: "green", wakeLights: [], wakeAction: "", comfortNotify: [] };
 }
 _renderNotifyProfileCompanion(userId) {
+const excluded = this._root && this._root.querySelector(".notify-profile-companion");
+if (excluded) excluded.hidden = true;
+return; // Backend feature is disabled as well.
+
 const root = this._root;
 const box = root && root.querySelector(".notify-profile-companion");
 if (!box) return;
@@ -18456,6 +18248,10 @@ status.textContent = last.ack_at
 : this._t("settings.companion_last_unseen", "Last message \"%text%\" - not seen yet", { text: last.text });
 }
 _renderNotifyProfileWishlistLinks(userId, focusLast) {
+const excluded = this._root && this._root.querySelector(".notify-profile-wishlist-links");
+if (excluded) excluded.hidden = true;
+return; // Backend feature is disabled as well.
+
 const root = this._root;
 const container = root && root.querySelector(".notify-profile-wishlist-links");
 if (!container) return;
@@ -24375,6 +24171,8 @@ examples.appendChild(b);
 });
 }
 _openQuickAdd() {
+return; // Feature disabled by the reduced profile.
+
 const root = this._root;
 if (!root) return;
 const input = root.querySelector(".quick-add-input");

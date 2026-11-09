@@ -30,6 +30,7 @@ from homeassistant.components import panel_custom, websocket_api
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from aiohttp import web
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.auth.permissions.const import POLICY_CONTROL
 from homeassistant.const import __version__ as HA_CORE_VERSION
 from homeassistant.core import HomeAssistant, ServiceCall
 # CalendarEntityFeature/DATA_COMPONENT - needed to delete/update/create calendar events directly against the entity
@@ -46,6 +47,7 @@ from homeassistant.util import slugify
 
 # Chores/Rewards/Permissions - kept in their own modules (see each file's docstring) rather than folded into this already-huge file.
 from . import chore_engine
+from . import profile
 from . import presence as presence_mod
 from . import pantry_engine
 from . import reward_engine
@@ -576,6 +578,7 @@ async def _ws_list_themes(
         vol.Required("themes"): list,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_save_themes(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -1456,15 +1459,10 @@ class FamilyHubSettingsHistoryExportView(HomeAssistantView):
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/backup_settings_now"})
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_backup_settings_now(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
-    """Settings panel's "Back up now" button - see
-    _manual_backup_settings_history's own docstring. Not server-side
-    admin-gated, same as _ws_set_settings/_ws_get_settings just above
-    (every Settings-panel write in this project is frontend-hidden from
-    non-admins via .admin-only-setting, not backend-enforced - see that
-    CSS class's own comment on why) - the card only shows this button to
-    an admin in the first place."""
+    """Create an administrator-requested settings backup. Authorization is enforced before this coroutine is scheduled."""
     entry_data = _get_family_hub_entry_data(hass)
     if entry_data is None:
         connection.send_error(msg["id"], "not_found", "Family Hub is not set up")
@@ -1834,6 +1832,7 @@ def _add_monitored_calendars(existing: list[str], new_entities: Iterable[str]) -
         vol.Required("overrides"): dict,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_set_notify_overrides(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -1869,6 +1868,7 @@ async def _ws_set_notify_overrides(
         vol.Required("entity_id"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_set_reminders_entity(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -1897,6 +1897,7 @@ async def _ws_set_reminders_entity(
         vol.Required("path"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_set_notification_click_path(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -2178,6 +2179,7 @@ _CALENDAR_CARD_ENTITY_FIELDS = {
         vol.Required("entities"): dict,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_remember_calendar_card_entities(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -2215,11 +2217,15 @@ async def _ws_remember_calendar_card_entities(
         vol.Required("settings"): dict,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_set_settings(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Persist the full Settings blob to its Store-backed home."""
+    if len(json.dumps(msg["settings"], ensure_ascii=False).encode("utf-8")) > profile.MAX_SETTINGS_BYTES:
+        connection.send_error(msg["id"], "invalid_format", "Settings exceed the size limit.")
+        return
     entry_data = _get_family_hub_entry_data(hass)
     if entry_data is None:
         connection.send_error(msg["id"], "not_found", "Family Hub is not set up")
@@ -2289,12 +2295,7 @@ async def _ws_set_settings(
     _migrate_people_reminders_into_profiles(new_settings)
     _migrate_people_extra_calendars_into_profiles(new_settings)
     await store.async_save(new_settings)
-    # 2026.11.1: someone's linked wish lists changed - bring them in now rather than at the next 6-hourly sync
-    if needs_existing and "wishlist_links_store" in entry_data:
-        for _uid in wishlist_links.changed_users(existing, new_settings):
-            wishlist_links.schedule_sync(hass, entry_data, _uid)
-    # 2026.11.1: Companion screens fetch their (maybe new) schedule again
-    companion.settings_changed(hass)
+    # Excluded features do not schedule work on settings changes.
     # badges may have changed what "who's home" means - read the calendars again on the next poll
     if isinstance(entry_data.get("presence"), presence_mod.Presence):
         entry_data["presence"].fetched_at = None
@@ -2486,6 +2487,7 @@ async def _ws_get_todo_card_config(
         vol.Optional("row_heights"): [vol.Coerce(float)],
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_set_todo_card_config(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -2676,6 +2678,7 @@ def _schedule_ensure_family_reminders_list(hass: HomeAssistant, entry: ConfigEnt
         vol.Required("name"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_create_todo_list(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -2743,6 +2746,7 @@ async def _ws_get_wishlist_config(
         vol.Required("is_wishlist"): bool,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_set_wishlist_flag(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -2826,6 +2830,7 @@ def _actor_display_name(hass: HomeAssistant, connection: websocket_api.ActiveCon
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/get_menu_suggestions"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_menu_suggestions(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -2853,6 +2858,7 @@ async def _ws_get_menu_suggestions(
         vol.Optional("servings"): vol.Any(int, None),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_add_menu_suggestion(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -2902,6 +2908,7 @@ async def _ws_add_menu_suggestion(
         vol.Required("uid"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_apply_menu_suggestion(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -3005,6 +3012,7 @@ async def _ws_apply_menu_suggestion(
         vol.Required("uid"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_remove_menu_suggestion(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -3149,6 +3157,10 @@ async def _ws_delete_calendar_event(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """The genuinely-enforced half of calendar event deletion - see the section comment above."""
+    entity_id = msg["entity_id"]
+    if not entity_id.startswith("calendar.") or connection.user is None or not connection.user.permissions.check_entity(entity_id, POLICY_CONTROL):
+        connection.send_error(msg["id"], "forbidden", "You cannot control this calendar.")
+        return
     entry_data = _get_family_hub_entry_data(hass)
     if entry_data is None:
         connection.send_error(msg["id"], "not_found", "Family Hub is not set up")
@@ -3195,6 +3207,10 @@ async def _ws_update_calendar_event(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
     """Move/edit a single calendar event - see the section comment above."""
+    entity_id = msg["entity_id"]
+    if not entity_id.startswith("calendar.") or connection.user is None or not connection.user.permissions.check_entity(entity_id, POLICY_CONTROL):
+        connection.send_error(msg["id"], "forbidden", "You cannot control this calendar.")
+        return
     entry_data = _get_family_hub_entry_data(hass)
     if entry_data is None:
         connection.send_error(msg["id"], "not_found", "Family Hub is not set up")
@@ -3251,8 +3267,12 @@ async def _ws_create_calendar_event(
     above for why this exists alongside the still-unchanged plain
     create_event service call for a non-recurring event."""
     entry_data = _get_family_hub_entry_data(hass)
-    if entry_data is None:
-        connection.send_error(msg["id"], "not_found", "Family Hub is not set up")
+    if entry_data is None or not chores_ws_api._has_permission(entry_data, connection, PERMISSION_EDIT_EVENT):
+        connection.send_error(msg["id"], "forbidden", "You do not have permission to create calendar events.")
+        return
+    entity_id = msg["entity_id"]
+    if not entity_id.startswith("calendar.") or connection.user is None or not connection.user.permissions.check_entity(entity_id, POLICY_CONTROL):
+        connection.send_error(msg["id"], "forbidden", "You cannot control this calendar.")
         return
     raw_event_fields = msg.get("event") or {}
     if not raw_event_fields.get("summary"):
@@ -3318,6 +3338,7 @@ async def _ws_detect_notify_target(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/get_recipes"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_recipes(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -3358,6 +3379,7 @@ async def _ws_get_recipes(
         vol.Optional("removed_grocy_ids"): [vol.Any(int, str)],
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_set_recipes(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -3392,6 +3414,7 @@ async def _ws_set_recipes(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/get_suggestions"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_suggestions(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -3415,6 +3438,7 @@ async def _ws_get_suggestions(
         vol.Required("suggestions"): [dict],
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_set_suggestions(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -3452,6 +3476,7 @@ async def _grocy_http_error(resp, path: str) -> RuntimeError:
 
 async def _grocy_api_get(session, url: str, api_key: str, path: str):
     """GET a Grocy REST API path (e.g. '/api/objects/recipes/5') and return the parsed JSON body."""
+    raise RuntimeError("Grocy is disabled in this Family Hub version")
     async with session.get(
         f"{url}{path}",
         headers={"GROCY-API-KEY": api_key},
@@ -3464,6 +3489,7 @@ async def _grocy_api_get(session, url: str, api_key: str, path: str):
 
 async def _grocy_api_post(session, url: str, api_key: str, path: str, body: dict | None = None):
     """POST to a Grocy REST API path - either an action endpoint like '/api/recipes/5/add-not-fulfilled-products-to-shoppinglist'"""
+    raise RuntimeError("Grocy is disabled in this Family Hub version")
     async with session.post(
         f"{url}{path}",
         headers={"GROCY-API-KEY": api_key, "Content-Type": "application/json"},
@@ -3482,6 +3508,7 @@ async def _grocy_api_post(session, url: str, api_key: str, path: str, body: dict
 
 async def _grocy_api_put(session, url: str, api_key: str, path: str, body: dict | None = None):
     """PUT to a Grocy REST API path - used for editing an existing generic entity object, e.g. '/api/objects/quantity_unit_conversions/5'"""
+    raise RuntimeError("Grocy is disabled in this Family Hub version")
     async with session.put(
         f"{url}{path}",
         headers={"GROCY-API-KEY": api_key, "Content-Type": "application/json"},
@@ -3504,6 +3531,7 @@ async def _grocy_api_delete(session, url: str, api_key: str, path: str):
     body on success). Same raise-on-non-2xx convention as _grocy_api_get/
     _grocy_api_post/_grocy_api_put - callers wrap this in a try/except.
     """
+    raise RuntimeError("Grocy is disabled in this Family Hub version")
     async with session.delete(
         f"{url}{path}",
         headers={"GROCY-API-KEY": api_key},
@@ -3528,6 +3556,7 @@ async def _grocy_api_upload_file(
     that's unique per use (e.g. embedding the recipe id), and treat a
     failure here as recoverable/non-fatal rather than retryable as-is.
     """
+    raise RuntimeError("Grocy is disabled in this Family Hub version")
     b64name = base64.b64encode(file_name.encode()).decode()
     async with session.put(
         f"{url}/api/files/{group}/{quote(b64name, safe='')}",
@@ -3543,6 +3572,7 @@ async def _grocy_api_get_file_bytes(
     session, url: str, api_key: str, group: str, file_name: str
 ) -> tuple[bytes, str | None]:
     """GET raw file bytes back out of Grocy's file storage (mirrors _grocy_api_upload_file's PUT, same base64-encoded-filename-in-the-URL convention)"""
+    raise RuntimeError("Grocy is disabled in this Family Hub version")
     b64name = base64.b64encode(file_name.encode()).decode()
     async with session.get(
         f"{url}/api/files/{group}/{quote(b64name, safe='')}",
@@ -3577,6 +3607,7 @@ def _guess_image_extension(image_url: str, content_type: str | None) -> str:
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/get_grocy_recipes"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocy_recipes(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -3674,6 +3705,7 @@ async def _sync_grocy_recipes_to_recipe_box(hass: HomeAssistant, entry: ConfigEn
     set Grocy up at all) - this must never raise or block the rest of
     _poll's own work over it.
     """
+    return  # Excluded from the reduced profile, including background work.
     entry_data = _get_family_hub_entry_data(hass)
     if entry_data is None:
         return False
@@ -4004,6 +4036,7 @@ def _with_plain_ingredients(detail: dict | None, lines: list | None) -> dict | N
         vol.Required("recipe_id"): vol.Coerce(int),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocy_recipe_detail(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4033,6 +4066,7 @@ async def _ws_get_grocy_recipe_detail(
         vol.Required("recipe_ids"): [vol.Coerce(int)],
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocy_recipe_details(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4078,6 +4112,7 @@ async def _ws_get_grocy_recipe_details(
         vol.Required("recipe_id"): vol.Coerce(int),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_delete_grocy_recipe(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4126,6 +4161,7 @@ async def _mark_grocery_pushed(entry_data: dict, week_start: str, recipe_ids) ->
         vol.Required("recipe_ids"): [vol.Coerce(int)],
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocery_list_status(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4151,6 +4187,7 @@ async def _ws_get_grocery_list_status(
         vol.Optional("servings_overrides", default={}): dict,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_push_grocery_list(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4227,6 +4264,7 @@ async def _ws_push_grocery_list(
         vol.Optional("servings"): vol.Coerce(int),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_consume_grocy_recipe(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4292,6 +4330,7 @@ def _format_shopping_list_amount(amount: float, qu: dict | None) -> str:
         vol.Optional("list_id", default=1): vol.Coerce(int),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocy_shopping_list(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4412,6 +4451,7 @@ async def _ws_get_grocy_shopping_list(
         vol.Optional("list_id", default=1): vol.Coerce(int),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_add_grocy_shopping_list_item(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4469,6 +4509,7 @@ async def _ws_add_grocy_shopping_list_item(
         vol.Required("item_id"): vol.Coerce(int),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_remove_grocy_shopping_list_item(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4497,6 +4538,7 @@ async def _ws_remove_grocy_shopping_list_item(
         vol.Required("done"): bool,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_toggle_grocy_shopping_list_item(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4537,6 +4579,7 @@ async def _ws_toggle_grocy_shopping_list_item(
         vol.Optional("amount"): vol.Coerce(float),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_update_grocy_shopping_list_item(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4570,6 +4613,7 @@ async def _ws_update_grocy_shopping_list_item(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/get_grocy_shopping_lists"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocy_shopping_lists(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4608,6 +4652,7 @@ async def _ws_get_grocy_shopping_lists(
         vol.Required("name"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_create_grocy_shopping_list(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4654,6 +4699,7 @@ async def _ws_create_grocy_shopping_list(
         vol.Required("list_id"): vol.Coerce(int),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_move_grocy_shopping_list_item(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4682,6 +4728,7 @@ async def _ws_move_grocy_shopping_list_item(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/get_grocy_locations"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocy_locations(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4718,6 +4765,7 @@ async def _ws_get_grocy_locations(
         vol.Required("name"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_create_grocy_location(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4760,6 +4808,7 @@ async def _ws_create_grocy_location(
         vol.Optional("name_plural"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_create_grocy_quantity_unit(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4814,6 +4863,7 @@ async def _ws_create_grocy_quantity_unit(
         vol.Optional("unlink_by_row_id", default=False): bool,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_put_away_grocy_shopping_list_item(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4923,6 +4973,7 @@ def _match_grocy_products(query: str, candidates: list[tuple[int, str]], limit: 
         vol.Required("text"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_match_grocy_product(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -4982,6 +5033,7 @@ async def _fetch_grocy_expiring_stock(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/get_grocy_expiring_soon"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocy_expiring_soon(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -5033,6 +5085,7 @@ async def _ws_get_grocy_expiring_soon(
         vol.Required("enabled"): bool,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_set_grocy_expiring_enabled(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -5106,6 +5159,7 @@ async def _fetch_grocy_low_stock(session: aiohttp.ClientSession, url: str, api_k
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/get_grocy_low_stock"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocy_low_stock(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -5140,6 +5194,7 @@ async def _ws_get_grocy_low_stock(
         vol.Required("enabled"): bool,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_set_grocy_low_stock_enabled(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -5169,6 +5224,7 @@ async def _ws_set_grocy_low_stock_enabled(
         vol.Optional("list_id", default=1): vol.Coerce(int),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_add_missing_grocy_products_to_shopping_list(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -5784,6 +5840,7 @@ async def _recipe_url_block_reason(url: str, allow_private: bool) -> str | None:
         vol.Required("url"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_parse_recipe_url(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -6006,6 +6063,7 @@ def _parse_recipe_text(text: str) -> dict:
         vol.Required("text"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_parse_recipe_text(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -6466,6 +6524,7 @@ async def _maybe_sync_standard_unit_conversions(
     rather than being marked done and silently leaving some pairs unfixed
     until the next code change happens to bump the generation number again.
     """
+    return  # Excluded from the reduced profile, including background work.
     url = entry.options.get(CONF_GROCY_URL) or ""
     api_key = entry.options.get(CONF_GROCY_API_KEY) or ""
     if not url or not api_key:
@@ -6807,6 +6866,7 @@ def _match_grocery_reference(query: str) -> dict | None:
         vol.Optional("groups"): [str],
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_match_recipe_ingredients(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7035,6 +7095,7 @@ async def _ws_match_recipe_ingredients(
         vol.Optional("qty_per_container", default=1): vol.Coerce(float),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_create_grocy_product(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7132,6 +7193,7 @@ async def _ws_create_grocy_product(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/get_grocy_categories"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocy_categories(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7170,6 +7232,7 @@ async def _ws_get_grocy_categories(
         vol.Required("name"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_create_grocy_category(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7214,6 +7277,7 @@ async def _ws_create_grocy_category(
         vol.Required("product_id"): vol.Coerce(int),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocy_product_details(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7277,6 +7341,7 @@ async def _ws_get_grocy_product_details(
         vol.Optional("description", default=""): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_update_grocy_product(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7332,6 +7397,7 @@ async def _ws_update_grocy_product(
         vol.Required("product_id"): vol.Coerce(int),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_delete_grocy_product(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7426,6 +7492,7 @@ async def _fetch_pantry_stock(session, url: str, api_key: str) -> list[dict]:
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/get_pantry_stock"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_pantry_stock(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7455,6 +7522,7 @@ async def _ws_get_pantry_stock(
         vol.Required("product_id"): vol.Coerce(int),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_grocy_stock_entries(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7503,6 +7571,7 @@ async def _ws_get_grocy_stock_entries(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/get_pantry_picker_data"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_get_pantry_picker_data(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7554,6 +7623,7 @@ async def _ws_get_pantry_picker_data(
         vol.Optional("best_before_date"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_pantry_add_stock(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7599,6 +7669,7 @@ async def _ws_pantry_add_stock(
         vol.Required("amount"): vol.Coerce(float),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_pantry_consume_stock(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7643,6 +7714,7 @@ async def _ws_pantry_consume_stock(
         vol.Optional("location_id"): vol.Any(vol.Coerce(int), None),
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_update_grocy_stock_entry(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7684,6 +7756,7 @@ async def _ws_update_grocy_stock_entry(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/pantry_extras/list"})
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_pantry_extras_list(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7708,6 +7781,7 @@ async def _ws_pantry_extras_list(
         vol.Optional("notes", default=""): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_pantry_extras_create(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7738,6 +7812,7 @@ async def _ws_pantry_extras_create(
         vol.Optional("notes"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_pantry_extras_update(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7764,6 +7839,7 @@ async def _ws_pantry_extras_update(
         vol.Required("extra_id"): str,
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_pantry_extras_delete(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -7795,6 +7871,7 @@ async def _ws_pantry_extras_delete(
         vol.Optional("plain_ingredients", default=[]): [vol.Any(str, dict)],
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_create_grocy_recipe(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -8008,6 +8085,7 @@ async def _ws_create_grocy_recipe(
         vol.Optional("plain_ingredients", default=[]): [vol.Any(str, dict)],
     }
 )
+@profile.disabled_feature
 @websocket_api.async_response
 async def _ws_update_grocy_recipe(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -8194,6 +8272,7 @@ async def _ws_update_grocy_recipe(
         vol.Optional("meal_plan_entity"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_set_daily_digest(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -8235,6 +8314,7 @@ async def _ws_set_daily_digest(
         vol.Optional("digest_sections"): dict,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_send_daily_digest_now(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
@@ -8459,6 +8539,7 @@ async def _ws_get_event_categories(hass: HomeAssistant, connection: websocket_ap
         vol.Optional("clear_keys"): [vol.All(str, vol.Length(max=400))],
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def _ws_set_event_category(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
     """category: an id, "" for explicitly none, or None to forget the choice. clear_keys drops
@@ -9590,7 +9671,7 @@ async def _build_daily_digest_sections(
 
     # -- Grocy: items expiring soon (opt-in, off by default - see CONF_GROCY_EXPIRING_ENABLED).
     if (
-        options.get(CONF_GROCY_EXPIRING_ENABLED)
+        profile.ENABLE_GROCY
         and sections.get("grocyExpiring", True)
     ):
         grocy_url = options.get(CONF_GROCY_URL) or ""
@@ -9616,7 +9697,7 @@ async def _build_daily_digest_sections(
 
     # -- Grocy: items running low (opt-in, off by default - see CONF_GROCY_LOW_STOCK_ENABLED).
     if (
-        options.get(CONF_GROCY_LOW_STOCK_ENABLED)
+        profile.ENABLE_GROCY
         and sections.get("grocyLowStock", True)
     ):
         grocy_url = options.get(CONF_GROCY_URL) or ""
@@ -10809,9 +10890,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, _ws_get_wishlist_config)
     websocket_api.async_register_command(hass, _ws_set_wishlist_flag)
     # 2026.11.1: linked GoWish / Amazon wish lists - see wishlist_links.py
-    wishlist_links.register(hass)
+    # External wishlist commands are not registered in this profile.
     # 2026.11.1: Family Hub Companion - a child's bedside screen (see companion.py)
-    companion.register(hass)
+    # Companion commands/services are not registered in this profile.
     # menu suggestions / can_edit_menu - see the design note above _encode_dish_description for which of these is genuinely backend-enforced and
     websocket_api.async_register_command(hass, _ws_get_menu_suggestions)
     websocket_api.async_register_command(hass, _ws_add_menu_suggestion)
@@ -10822,17 +10903,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, _ws_remember_calendar_card_entities)
     websocket_api.async_register_command(hass, _ws_create_calendar_event)
     # Quick Add: the More menu box, the family_hub.quick_add action, and Assist (chat and voice) sentences
-    quick_add_ha.register(hass)
-    try:
-        from homeassistant.helpers.start import async_at_started
-
-        async def _register_quick_add_assist(_hass: HomeAssistant | None = None) -> None:
-            if not hass.data[DOMAIN].get("quick_add_assist"):
-                hass.data[DOMAIN]["quick_add_assist"] = quick_add_ha.register_assist(hass)
-
-        async_at_started(hass, _register_quick_add_assist)
-    except Exception as err:  # noqa: BLE001
-        _LOGGER.debug("Family Hub: could not schedule the Quick Add Assist sentences: %s", err)
+    # Quick Add is excluded until caller-context propagation is implemented.
     websocket_api.async_register_command(hass, _ws_delete_calendar_event)
     websocket_api.async_register_command(hass, _ws_update_calendar_event)
     websocket_api.async_register_command(hass, _ws_list_users)
@@ -10954,7 +11025,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             module_url=panel_url_versioned,
             embed_iframe=False,
             trust_external=False,
-            require_admin=False,
+            require_admin=True,
             config={"iconUrl": icon_url_versioned},
         )
     except ValueError:
@@ -10975,7 +11046,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _register_dashboard_resource(hass, recipe_box_card_url_versioned)
     _register_dashboard_resource(hass, right_now_card_url_versioned)
     _register_dashboard_resource(hass, companion_card_url_versioned)
-    _schedule_my_chores_migration(hass)
+    # Do not rewrite unrelated existing dashboards during installation.
     _schedule_ensure_family_reminders_list(hass, entry)
 
     themes = await _load_themes(hass)
@@ -11136,7 +11207,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if checklists_changed:
                 await event_checklists_store.async_save(event_checklists)
         await _maybe_send_daily_digest(hass, entry, digest_store, digest_state, settings_store)
-        await _sync_grocy_recipes_to_recipe_box(hass, entry)
         poll_presence_data = hass.data.get(DOMAIN, {}).get("entries", {}).get(entry.entry_id)
         if poll_presence_data is not None:
             await _refresh_presence(hass, poll_presence_data, sweep=False)
@@ -11279,22 +11349,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _wl_entry_data = hass.data[DOMAIN]["entries"][entry.entry_id]
 
-    async def _sync_linked_wishlists(_now=None) -> None:
-        try:
-            await wishlist_links.async_sync(hass, _wl_entry_data)
-        except Exception as err:  # noqa: BLE001 - a sync failure must never kill the schedule
-            _LOGGER.warning("Family Hub: linked wish list sync failed: %s", err)
-
-    _wl_entry_data["cancel_wishlist_links"] = async_track_time_interval(
-        hass, _sync_linked_wishlists, timedelta(hours=wishlist_links.wi.SYNC_EVERY_HOURS)
-    )
-    _wl_entry_data["cancel_wishlist_links_first"] = async_call_later(hass, 120, _sync_linked_wishlists)
-
-    # 2026.11.1: Family Hub Companion - each child's part of the day, their room light, and messages (see companion.py)
-    _companion = companion.Companion(hass, _wl_entry_data, companion.store_for(hass, entry.entry_id))
-    await _companion.async_load()
-    _wl_entry_data["companion"] = _companion
-    _wl_entry_data["cancel_companion_tick"] = async_track_time_change(hass, _companion.tick, second=5)
+    # External wishlist synchronization and Companion ticks are disabled.
 
     # v1.168.74: every stored timer fires on its exact second again after a
     # restart (the sweep is only the backstop).
@@ -11321,7 +11376,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     hass.data[DOMAIN]["entries"][entry.entry_id]["cancel_chore_sensor_listener"] = cancel_chore_sensor_listener
     await _async_register_chore_services(hass)
-    await hass.config_entries.async_forward_entry_setups(entry, ["todo", "sensor", "button", "select", "number", "text", "switch"])
+    await hass.config_entries.async_forward_entry_setups(entry, list(profile.PLATFORMS))
 
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
@@ -11354,17 +11409,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # interval before the first reminder check.
     hass.async_create_task(_poll())
 
-    # Best-effort, backgrounded on purpose (see _maybe_sync_standard_unit_ conversions's own docstring)
-    hass.async_create_task(
-        _maybe_sync_standard_unit_conversions(hass, entry, grocy_conversions_sync_store)
-    )
-
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Cancel polling and remove the sidebar panel + any native themes we registered."""
-    await hass.config_entries.async_unload_platforms(entry, ["todo", "sensor", "button"])
+    if not await hass.config_entries.async_unload_platforms(entry, list(profile.PLATFORMS)):
+        return False
 
     entry_data = hass.data.get(DOMAIN, {}).get("entries", {}).pop(entry.entry_id, None)
     if entry_data and entry_data.get("cancel"):
