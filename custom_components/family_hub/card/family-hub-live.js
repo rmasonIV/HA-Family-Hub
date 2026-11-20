@@ -1,5 +1,11 @@
 const CARD = 'family-hub-live';
 const MAX_ITEMS = 4;
+const CALENDAR_COLORS = ['#4a90e2','#2ba675','#b47adc','#e68d38','#d96389','#28a8af','#8b9b36','#777fea'];
+const calendarColor = (config, id, index) => {
+  const color = config.calendar_colors?.[id];
+  return typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)
+    ? color : CALENDAR_COLORS[index % CALENDAR_COLORS.length];
+};
 const ACTIONS = {
   light: 'toggle', switch: 'toggle', input_boolean: 'toggle',
   script: 'turn_on', button: 'press', input_button: 'press', cover: 'open_cover'
@@ -24,11 +30,9 @@ header{display:flex;justify-content:space-between;align-items:center;gap:16px;fl
 small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-radius:9px;margin:14px 0}
 .layout{display:grid;gap:14px;margin-top:16px}
 .quick-actions{background:white;border:1px solid #dce2e9;border-radius:12px}
-.quick-actions.pinned{position:sticky;top:var(--header-height,56px);z-index:2}
 .quick-header{display:flex;align-items:center;gap:8px;padding:0 10px}
 .quick-header button{min-height:44px;border:0;background:transparent;color:inherit}
 #quick-toggle{flex:1;text-align:left;font-weight:600}
-#quick-pin[aria-pressed="true"]{background:#dceafb}
 .action-grid,.widget-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,175px),1fr));gap:12px}
 .action-grid{padding:12px;border-top:1px solid #dce2e9}
 .quick-control{display:flex;align-items:center;gap:10px;min-height:64px;padding:10px;border:1px solid #cbd5e1;border-radius:9px;background:#f4f7fb;text-align:left;color:inherit}
@@ -85,7 +89,6 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .day-event .description-full{margin-inline-start:1.2em}
 .description-preview{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .day-event details[open] .description-preview{display:none}
-#quick-pin{min-width:88px;border:1px solid #cbd5e1;border-radius:8px;min-height:38px}
 .settings-list{list-style:none;padding:0}
 .settings-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
 .widget-grid.wide{grid-template-columns:minmax(0,1fr)}
@@ -110,10 +113,40 @@ button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;bac
 @media(max-width:440px){main{padding:10px}.calendar{padding:10px}.days{grid-template-columns:minmax(0,1fr)}.day{min-height:120px}}
 
 #calendar-status:empty{display:none} button:disabled{cursor:default;opacity:.55}
+
+:host {
+  display:block;
+  color:var(--primary-text-color,#223047);
+  background:transparent;
+  --fh-surface:var(--ha-card-background,var(--card-background-color,#fff));
+  --fh-border:var(--divider-color,#dce2e9);
+  --fh-tint:color-mix(in srgb,var(--primary-color,#4a90e2) 18%,var(--fh-surface));
+}
+main {container-type:inline-size}
+.quick-actions,.calendar,.side,.month-day,.action-button,dialog {
+  background:var(--fh-surface);color:inherit;
+}
+.quick-actions,.month-day,.day,.day-details,.device,.quick-control,.action-button,.action-grid,dialog {
+  border-color:var(--fh-border);
+}
+small,.muted,.day-event summary .description-preview {color:var(--secondary-text-color,#627083)}
+.action-grid {grid-template-columns:repeat(4,minmax(0,1fr))}
+.quick-control {background:color-mix(in srgb,currentColor 5%,var(--fh-surface));overflow-wrap:anywhere}
+.quick-control[aria-pressed="true"] ,.view-toggle [aria-pressed="true"],
+.month-day[aria-expanded="true"],.day-heading:hover,.day-heading:focus-visible {background:var(--fh-tint)}
+.month-day[aria-expanded="true"] {border-color:var(--primary-color,#4a90e2)}
+.event,.event.alt,.event.third {
+  background:color-mix(in srgb,var(--event-color,#4a90e2) 20%,var(--fh-surface));
+  border-inline-start:3px solid var(--event-color,#4a90e2);
+}
+.calendar-legend {display:flex;flex-wrap:wrap;gap:6px 14px;padding:0;margin:0 0 12px;list-style:none;font-size:.85rem}
+.calendar-legend[hidden] {display:none}
+.calendar-legend li {display:flex;align-items:center;gap:6px}
+.calendar-legend li::before {content:'';width:10px;height:10px;border-radius:50%;background:var(--event-color)}
+@container (max-width:620px) {.action-grid {grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style><main><section class="quick-actions" aria-label="Quick Actions" id="quick-actions">
   <div class="quick-header">
     <button type="button" id="quick-toggle" aria-controls="quick-controls" aria-expanded="true">Quick Actions</button>
-    <button type="button" id="quick-pin" aria-label="Pin Quick Actions" aria-pressed="false">Pin</button>
   </div>
   <div class="action-grid" id="quick-controls"></div></section>
 <div class="layout" id="layout">
@@ -125,7 +158,7 @@ button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;bac
     <button class="action-button" id="month-view" type="button" aria-pressed="false">Month</button>
   </div>
 </div>
-<p class="muted" id="calendar-status" role="status"></p><div id="week"><div class="days" id="week-days"></div></div>
+<p class="muted" id="calendar-status" role="status"></p><ul class="calendar-legend" id="calendar-legend" aria-label="Calendar legend"></ul><div id="week"><div class="days" id="week-days"></div></div>
 <div id="month" hidden>
   <div class="month-top">
     <h3 id="month-title"></h3>
@@ -174,32 +207,35 @@ function mount(root, host) {
   let calendarEvents = [];
   let request = 0;
   let expanded = true;
-  let pinned = false;
   const status = document.getElementById('status');
   const report = message => { status.textContent = message; status.hidden = !message; };
   const calendarStatus = document.getElementById('calendar-status');
-  const quick = document.getElementById('quick-actions');
   const controls = document.getElementById('quick-controls');
-  const pin = document.getElementById('quick-pin');
   const toggle = document.getElementById('quick-toggle');
 
   function updateRibbon() {
     controls.hidden = !expanded;
-    quick.classList.toggle('pinned', pinned);
-    pin.setAttribute('aria-pressed', String(pinned));
-    pin.setAttribute('aria-label', pinned ? 'Unpin Quick Actions' : 'Pin Quick Actions');
-    pin.textContent = pinned ? '✓ Pinned' : 'Pin';
     toggle.textContent = expanded ? '▾ Quick Actions' : '▸ Quick Actions';
     toggle.setAttribute('aria-expanded', String(expanded));
   }
-  pin.onclick = () => { pinned = !pinned; if (pinned) expanded = true; updateRibbon(); };
-  toggle.onclick = () => { expanded = !expanded; if (!expanded) pinned = false; updateRibbon(); };
+  toggle.onclick = () => { expanded = !expanded; updateRibbon(); };
   updateRibbon();
+
+  const legend = document.getElementById('calendar-legend');
+  const colors = new Map(host.config.calendars.map((id, index) => [id, calendarColor(host.config, id, index)]));
+  const legendItems = Array.from(colors, ([id, color]) => {
+    const item = window.document.createElement('li');
+    item.style.setProperty('--event-color', color);
+    item.textContent = id;
+    legend.append(item);
+    return [id, item];
+  });
+  legend.hidden = !legendItems.length;
 
   function eventsOn(date) {
     const next = addDays(date, 1);
     return calendarEvents.filter(event => event.start < next && event.end > date)
-      .map(event => [event.summary, '', {time:when(event.start, event.end, date, event.allDay),
+      .map(event => [event.summary, colors.get(event.calendarId), {time:when(event.start, event.end, date, event.allDay),
         location:event.location, description:event.description}]);
   }
 
@@ -222,7 +258,7 @@ function mount(root, host) {
     const results = await Promise.allSettled(config.calendars.flatMap(id => ranges.map(async ([from,to]) => {
       const query = new URLSearchParams({start:from.toISOString(), end:to.toISOString()});
       const events = await hass.callApi('GET', 'calendars/'+encodeURIComponent(id)+'?'+query);
-      return events.filter(event => event.start && event.end).map(event => ({...event,
+      return events.filter(event => event.start && event.end).map(event => ({...event, calendarId:id,
         start:endpoint(event.start), end:endpoint(event.end), allDay:Boolean(event.start.date)}));
     })));
     if (current !== request) return;
@@ -275,6 +311,9 @@ function mount(root, host) {
   function updateEntities() {
     const hass = host.hass;
     if (!hass) return;
+    for (const [id, item] of legendItems) {
+      item.textContent = hass.states[id]?.attributes.friendly_name || id;
+    }
     for (const {id,button,label,state,busy} of actionButtons) {
       const entity = hass.states[id];
       label.firstChild.textContent = entity?.attributes.friendly_name || id;
@@ -293,11 +332,11 @@ function mount(root, host) {
     }
   }
   function eventCards(events, tag = 'div') {
-    return events.map(([title, color = '']) => `<${tag} class="event ${color}">${escapeText(title)}</${tag}>`).join('');
+    return events.map(([title, color]) => `<${tag} class="event" style="--event-color:${color}">${escapeText(title)}</${tag}>`).join('');
   }
 
   function dayEventCards(events) {
-    return events.map(([title, color = '', details = {}]) => `<article class="event day-event ${color}">
+    return events.map(([title, color, details = {}]) => `<article class="event day-event" style="--event-color:${color}">
       <strong>${escapeText(title)}</strong>
       ${details.time ? `<p class="event-meta"><span class="event-icon" role="img" aria-label="Time">🕒</span><span>${escapeText(details.time)}</span></p>` : ''}
       ${details.location ? `<p class="event-meta"><span class="event-icon" role="img" aria-label="Location">📍</span><span>${escapeText(details.location)}</span></p>` : ''}
@@ -441,7 +480,16 @@ class FamilyHubLiveEditor extends HTMLElement {
         remove.textContent = 'Remove';
         remove.setAttribute('aria-label', 'Remove '+id);
         remove.onclick = () => save(key, selected.filter(item => item !== id));
-        row.append(id+' ',remove);
+        const name = this._hass.states[id]?.attributes.friendly_name || id;
+        row.append(name+' ',remove);
+        if (key === 'calendars') {
+          const picker = document.createElement('input');
+          picker.type = 'color';
+          picker.value = calendarColor(this.config, id, selected.indexOf(id));
+          picker.setAttribute('aria-label', 'Calendar color for '+name);
+          picker.onchange = () => save('calendar_colors', {...this.config.calendar_colors,[id]:picker.value});
+          row.append(' ',picker);
+        }
         section.append(row);
       }
       const picker = document.createElement('select');
