@@ -15,6 +15,7 @@ The integration registers the card automatically for UI-managed dashboard resour
 - **Calendars** receive distinct default colors for the first eight calendars. Use the color picker next to each calendar name to override its color. The legend identifies calendars by their Home Assistant names, and the same colors appear in Week, Month, and event details.
 - **Quick Actions** holds up to four buttons. Wide layouts reserve four slots, and narrow layouts use two columns. Tap the header to collapse or expand the actions. Supported actions include toggling lights and switches, running scripts, pressing buttons, and opening closed covers after confirmation.
 - **Quick Widgets** displays up to four entity states. Choose side-by-side cards or a full-width stack. A complete Lovelace card such as `custom:pollenprognos-card` can be placed below Family Hub Live in a Vertical Stack.
+- **Week weather** adds the daily forecast from a selected `weather.*` entity. Choose a provider that supports daily forecasts. Week view shows the icon and available high and low temperatures beside events. Tap the icon for forecast details. Days outside the provider’s forecast window continue to show events. Choose **None** to turn weather off.
 - **Default calendar view** controls whether Week or Month opens first. Tap a date in Week to open its events in a dialog. In Month, tapping a date opens the details panel.
 
 ## YAML example
@@ -33,6 +34,7 @@ actions:
   - light.living_room
 widgets:
   - sensor.outdoor_temperature
+weather_entity: weather.home
 default_view: month
 widget_layout: grid
 ```
