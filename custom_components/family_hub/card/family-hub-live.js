@@ -45,7 +45,7 @@ const when = (start, end, date, allDay) => {
 
 const markup = `<style>
 :host{font-family:system-ui,sans-serif;color:#223047;background:#f1f4f8}
-*{box-sizing:border-box}main{max-width:1500px;margin:auto;padding:20px}
+*{box-sizing:border-box}main{width:100%;padding:clamp(6px,1vw,14px);container-type:inline-size}
 header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
 small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-radius:9px;margin:14px 0}
 .layout{display:grid;gap:14px;margin-top:16px}
@@ -70,7 +70,7 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .settings select{max-width:100%;padding:8px;border-radius:6px}
 .settings .helper{font-size:.85rem;color:#627083}
 
-.calendar,.side{background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px #0001}
+.calendar,.side{background:white;border-radius:12px;padding:clamp(8px,1cqi,14px);box-shadow:0 1px 4px #0001}
 .days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}
 .day{border:1px solid #dce2e9;border-radius:9px;min-height:180px;padding:8px;overflow-wrap:anywhere}
 .day,.month-day{box-shadow:0 2px 4px #22304714,0 1px 1px #2230470a}
@@ -98,7 +98,7 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .weekday{text-align:center;font-size:.75rem}
 .month-day{display:grid;align-content:start;gap:3px;min-width:0;min-height:66px;text-align:left;border:1px solid #dce2e9;border-radius:7px;background:white;padding:5px;color:inherit}
-.month-content:not(.has-details) .month-day{min-height:clamp(86px,11vh,125px)}
+.month-content:not(.has-details) .month-day{min-height:clamp(64px,9dvh,112px)}
 .day-details{display:flex;flex-direction:column;min-height:0;contain:size}
 .day-details[hidden]{display:none}
 #day-events{overflow-y:auto;overscroll-behavior:contain}
@@ -121,19 +121,21 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .detail-header h3{font-size:1rem}
 dialog{width:min(380px,calc(100% - 32px));border:1px solid #cbd5e1;border-radius:12px;padding:22px;color:inherit}
 dialog::backdrop{background:#22304770}
-@media(max-width:800px){
+@container (max-width:760px){
   .month-content.has-details{grid-template-columns:minmax(0,1fr)}
   .day-details{contain:none;max-height:360px}
-  .month-content:not(.has-details) .month-day{min-height:76px}
+  .month-grid{gap:3px}
+  .month-day,.month-content:not(.has-details) .month-day{min-height:52px;padding:4px}
   .month-day .event{font-size:0;min-height:4px;padding:0}
+  .month-day small{font-size:.65rem}
 }
 .event{display:block;background:#dceafb;border-radius:6px;padding:7px;margin:6px 0;font-size:.85rem}
 .event.alt{background:#e8f4dc}.event.third{background:#fae8dd}
 .side h3{margin-top:0}.device{padding:12px;border:1px solid #e2e6eb;border-radius:9px;margin:10px 0}
 button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;background:#e4ebf6;padding:8px 12px}
-@media(max-width:1100px){.days{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(max-width:850px){.days{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:440px){main{padding:10px}.calendar{padding:10px}.days{grid-template-columns:minmax(0,1fr)}.day{min-height:120px}}
+@container (max-width:1050px){.days{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@container (max-width:680px){.days{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:460px){.days{grid-template-columns:minmax(0,1fr)}.day{min-height:120px}}
 
 #calendar-status:empty{display:none} button:disabled{cursor:default;opacity:.55}
 
@@ -145,7 +147,6 @@ button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;bac
   --fh-border:var(--divider-color,#dce2e9);
   --fh-tint:color-mix(in srgb,var(--primary-color,#4a90e2) 18%,var(--fh-surface));
 }
-main {container-type:inline-size}
 .quick-actions,.calendar,.side,.month-day,.action-button,dialog {
   background:var(--fh-surface);color:inherit;
 }
@@ -569,7 +570,11 @@ function mount(root, host) {
     const day = Number(button.dataset.day);
     selectedDay = selectedDay === day ? null : day;
     renderCalendar();
-    monthGrid.querySelector(`[data-day="${day}"]`).focus();
+    monthGrid.querySelector(`[data-day="${day}"]`).focus({preventScroll:true});
+    if (selectedDay !== null &&
+        dayDetails.getBoundingClientRect().top > monthGrid.getBoundingClientRect().top) {
+      dayDetails.scrollIntoView({block:'nearest'});
+    }
   });
   document.getElementById('close-day').addEventListener('click', () => {
     const day = selectedDay;
