@@ -1,5 +1,10 @@
 const CARD = 'family-hub-live';
 const MAX_ITEMS = 4;
+const WEATHER_ICONS = {
+  sunny:'☀️', clear_night:'🌙', 'clear-night':'🌙', partlycloudy:'🌤️', cloudy:'☁️',
+  rainy:'🌧️', pouring:'🌧️', lightning:'⛈️', 'lightning-rainy':'⛈️', snowy:'❄️',
+  'snowy-rainy':'🌨️', hail:'🌨️', fog:'🌫️', windy:'💨', 'windy-variant':'💨'
+};
 const CALENDAR_COLORS = ['#4a90e2','#2ba675','#b47adc','#e68d38','#d96389','#28a8af','#8b9b36','#777fea'];
 const calendarColor = (config, id, index) => {
   const color = config.calendar_colors?.[id];
@@ -158,7 +163,7 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
     <button class="action-button" id="month-view" type="button" aria-pressed="false">Month</button>
   </div>
 </div>
-<p class="muted" id="calendar-status" role="status"></p><ul class="calendar-legend" id="calendar-legend" aria-label="Calendar legend"></ul><div id="week"><div class="days" id="week-days"></div></div>
+<p class="muted" id="calendar-status" role="status"></p><ul class="calendar-legend" id="calendar-legend" aria-label="Calendar legend"></ul><div id="week"><p id="weather-status" class="muted" role="status" hidden></p><div class="days" id="week-days"></div></div>
 <div id="month" hidden>
   <div class="month-top">
     <h3 id="month-title"></h3>
@@ -190,6 +195,13 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
   </div>
   <div id="week-day-events"></div>
 </dialog>
+<dialog id="forecast-details" aria-labelledby="forecast-title">
+  <div class="detail-header">
+    <h2 id="forecast-title"></h2>
+    <form method="dialog"><button class="action-button" aria-label="Close forecast">×</button></form>
+  </div>
+  <p id="forecast-summary"></p>
+</dialog>
 </main>`;
 
 function mount(root, host) {
@@ -205,6 +217,77 @@ function mount(root, host) {
   let month = new Date(today.getFullYear(), today.getMonth(), 1);
   let selectedDay = null;
   let calendarEvents = [];
+  const forecasts = new Map();
+  let subscription;
+  const weatherStatus = document.getElementById('weather-status');
+
+  function redrawWeek() {
+    if (monthView) return;
+    const active = root.activeElement;
+    const forecastIndex = active?.dataset.forecast;
+    const dayIndex = active?.dataset.weekDay;
+    renderCalendar();
+    if (forecastIndex !== undefined) weekDays.querySelector(`[data-forecast="${forecastIndex}"]`)?.focus();
+    if (dayIndex !== undefined) weekDays.querySelector(`[data-week-day="${dayIndex}"]`)?.focus();
+  }
+
+  function stopWeather() {
+    const previous = subscription;
+    subscription = undefined;
+    forecasts.clear();
+    if (previous?.unsubscribe) Promise.resolve().then(previous.unsubscribe).catch(() => {});
+  }
+
+  function startWeather() {
+    const id = host.config.weather_entity;
+    const connection = host.hass?.connection;
+    if (!host.isConnected || !id || !connection || subscription?.connection === connection) return;
+    stopWeather();
+    const current = {connection};
+    subscription = current;
+    weatherStatus.textContent = 'Loading daily forecast…';
+    weatherStatus.hidden = false;
+    Promise.resolve().then(() => connection.subscribeMessage(message => {
+      if (subscription !== current) return;
+      forecasts.clear();
+      for (const forecast of message.forecast ?? []) {
+        const date = new Date(forecast.datetime);
+        if (Number.isFinite(date.getTime())) forecasts.set(date.toDateString(), forecast);
+      }
+      weatherStatus.textContent = forecasts.size ? '' : 'Daily forecast unavailable.';
+      weatherStatus.hidden = Boolean(forecasts.size);
+      redrawWeek();
+    }, {type:'weather/subscribe_forecast', entity_id:id, forecast_type:'daily'}))
+      .then(unsubscribe => {
+        if (subscription === current) current.unsubscribe = unsubscribe;
+        else return unsubscribe();
+      })
+      .catch(() => {
+        if (subscription !== current) return;
+        weatherStatus.textContent = 'Daily forecast unavailable for the selected weather entity.';
+        weatherStatus.hidden = false;
+        redrawWeek();
+      });
+  }
+
+  function forecastMarkup(date, index, forecast) {
+    const high = forecast.temperature;
+    const low = forecast.templow;
+    const today = date.toDateString() === new Date().toDateString();
+    const current = host.hass?.states[host.config.weather_entity]?.attributes.temperature;
+    const position = today && Number.isFinite(current) && high > low
+      ? Math.min(100, Math.max(0, 100 * (high-current)/(high-low))) : null;
+    const icon = WEATHER_ICONS[forecast.condition] ?? '🌡️';
+    return `<div class="weather">
+      <button class="weather-button" type="button" data-forecast="${index}" aria-haspopup="dialog"
+        aria-label="Forecast for ${weekdays[index]} ${date.getDate()}">${icon}</button>
+      ${Number.isFinite(high) ? `<span aria-label="High ${high} degrees">${high}°</span>` : ''}
+      ${Number.isFinite(high) && Number.isFinite(low) ? `<span class="range" aria-hidden="true">
+        ${position === null ? '' : `<span class="current" style="--position:${position}%"></span>`}
+      </span>` : ''}
+      ${Number.isFinite(low) ? `<span aria-label="Low ${low} degrees">${low}°</span>` : ''}
+    </div>`;
+  }
   let request = 0;
   let expanded = true;
   const status = document.getElementById('status');
@@ -356,12 +439,16 @@ function mount(root, host) {
     document.getElementById('week-view').setAttribute('aria-pressed', String(!monthView));
     document.getElementById('month-view').setAttribute('aria-pressed', String(monthView));
     if (!monthView) {
-      weekDays.innerHTML = weekDates.map((date, index) => `<article class="day">
+      weekDays.innerHTML = weekDates.map((date, index) => {
+        const forecast = forecasts.get(date.toDateString());
+        return `<article class="day">
         <button type="button" class="day-heading" data-week-day="${index}" aria-haspopup="dialog" aria-label="View events for ${weekdays[index]} ${date.getDate()}">${weekdays[index]} ${date.getDate()}</button>
-        <div class="day-body events-only">
+        <div class="day-body ${forecast ? '' : 'events-only'}">
+          ${forecast ? forecastMarkup(date, index, forecast) : ''}
           <div class="events">${eventCards(eventsOn(date))}</div>
         </div>
-      </article>`).join('');
+      </article>`;
+      }).join('');
       return;
     }
 
@@ -397,6 +484,28 @@ function mount(root, host) {
 
 
   weekDays.addEventListener('click', event => {
+    const weatherButton = event.target.closest('[data-forecast]');
+    if (weatherButton) {
+      const date = weekDates[Number(weatherButton.dataset.forecast)];
+      const forecast = forecasts.get(date.toDateString());
+      if (!forecast) return;
+      const entity = host.hass?.states[host.config.weather_entity];
+      const unit = entity?.attributes.temperature_unit ?? host.hass?.config?.unit_system?.temperature ?? '°';
+      const temperature = value => Number.isFinite(value) ? `${value} ${unit}` : null;
+      const high = temperature(forecast.temperature);
+      const low = temperature(forecast.templow);
+      const today = date.toDateString() === new Date().toDateString();
+      const current = today ? temperature(entity?.attributes.temperature) : null;
+      document.getElementById('forecast-title').textContent = date.toLocaleDateString(undefined,
+        {weekday:'long', month:'short', day:'numeric'});
+      document.getElementById('forecast-summary').textContent = [
+        forecast.condition?.replaceAll('-', ' '), high && `High ${high}`,
+        low && `Low ${low}`, current && `Current ${current}`,
+        Number.isFinite(forecast.precipitation_probability) && `Rain chance ${forecast.precipitation_probability}%`
+      ].filter(Boolean).join(' · ') || 'Forecast unavailable';
+      document.getElementById('forecast-details').showModal();
+      return;
+    }
     const dayButton = event.target.closest('[data-week-day]');
     if (dayButton) {
       const index = Number(dayButton.dataset.weekDay);
@@ -439,7 +548,7 @@ function mount(root, host) {
       loadCalendar();
     });
   }
-  return {loadCalendar, updateEntities};
+  return {loadCalendar, updateEntities, startWeather, stopWeather};
 }
 
 class FamilyHubLiveEditor extends HTMLElement {
@@ -511,6 +620,19 @@ class FamilyHubLiveEditor extends HTMLElement {
       section.append(picker,add);
       this.append(section);
     }
+    const weatherLabel = document.createElement('label');
+    const weatherPicker = document.createElement('select');
+    weatherPicker.add(new Option('None', ''));
+    const weatherEntities = Object.keys(this._hass.states).filter(id => domainOf(id) === 'weather').sort();
+    const selectedWeather = this.config.weather_entity;
+    if (selectedWeather && !weatherEntities.includes(selectedWeather)) weatherEntities.push(selectedWeather);
+    for (const id of weatherEntities) {
+      weatherPicker.add(new Option(this._hass.states[id]?.attributes.friendly_name || id, id));
+    }
+    weatherPicker.value = selectedWeather ?? '';
+    weatherPicker.onchange = () => save('weather_entity', weatherPicker.value);
+    weatherLabel.append('Week weather ', weatherPicker);
+    this.append(weatherLabel);
     for (const [key, title, options] of [
       ['default_view','Default calendar view',{week:'Week',month:'Month'}],
       ['widget_layout','Widget layout',{grid:'Side by side',wide:'Full-width stack'}]
@@ -541,6 +663,10 @@ class FamilyHubLive extends HTMLElement {
       }
       return [...new Set(list)];
     };
+    if (config.weather_entity && !/^weather\.[a-z0-9_]+$/.test(config.weather_entity)) {
+      throw new Error('Select a weather entity for Family Hub Week weather');
+    }
+    this.view?.stopWeather();
     this.config = {
       ...config, calendars:entities('calendars',id => domainOf(id) === 'calendar'),
       actions:entities('actions',id => Object.hasOwn(ACTIONS,domainOf(id)),MAX_ITEMS),
@@ -551,6 +677,7 @@ class FamilyHubLive extends HTMLElement {
     this.view = mount(root,this);
     this.view.updateEntities();
     this.view.loadCalendar();
+    this.view.startWeather();
   }
 
   get hass() { return this._hass; }
@@ -558,13 +685,18 @@ class FamilyHubLive extends HTMLElement {
     const first = !this._hass;
     this._hass = hass;
     this.view?.updateEntities();
+    this.view?.startWeather();
     if (first) this.view?.loadCalendar();
   }
 
   connectedCallback() {
+    this.view?.startWeather();
     this.refreshTimer = setInterval(() => this.view?.loadCalendar(), 5 * 60 * 1000);
   }
-  disconnectedCallback() { clearInterval(this.refreshTimer); }
+  disconnectedCallback() {
+    clearInterval(this.refreshTimer);
+    this.view?.stopWeather();
+  }
   getCardSize() { return 8; }
 }
 
