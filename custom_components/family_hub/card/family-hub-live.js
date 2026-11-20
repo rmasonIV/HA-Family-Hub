@@ -5,11 +5,26 @@ const WEATHER_ICONS = {
   rainy:'🌧️', pouring:'🌧️', lightning:'⛈️', 'lightning-rainy':'⛈️', snowy:'❄️',
   'snowy-rainy':'🌨️', hail:'🌨️', fog:'🌫️', windy:'💨', 'windy-variant':'💨'
 };
+const temperaturePosition = (current, high, low) =>
+  Number.isFinite(current) && Number.isFinite(high) && Number.isFinite(low) && high >= low
+    ? (high === low ? 50 : Math.min(100, Math.max(0, 100 * (high-current)/(high-low))))
+    : null;
+const ACTION_ICONS = {
+  light:'mdi:lightbulb', switch:'mdi:toggle-switch', input_boolean:'mdi:toggle-switch',
+  script:'mdi:play-circle-outline', button:'mdi:gesture-tap-button',
+  input_button:'mdi:gesture-tap-button', cover:'mdi:garage'
+};
+const ACTION_ICON_CHOICES = [
+  'mdi:lightbulb', 'mdi:lightbulb-on', 'mdi:lamps', 'mdi:floor-lamp', 'mdi:led-strip-variant',
+  'mdi:toggle-switch', 'mdi:garage', 'mdi:door', 'mdi:fan', 'mdi:power',
+  'mdi:play-circle-outline', 'mdi:gesture-tap-button'
+];
+const isHexColor = color => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color);
+const isIcon = icon => typeof icon === 'string' && /^mdi:[a-z0-9-]+$/.test(icon);
 const CALENDAR_COLORS = ['#4a90e2','#2ba675','#b47adc','#e68d38','#d96389','#28a8af','#8b9b36','#777fea'];
 const calendarColor = (config, id, index) => {
   const color = config.calendar_colors?.[id];
-  return typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)
-    ? color : CALENDAR_COLORS[index % CALENDAR_COLORS.length];
+  return isHexColor(color) ? color : CALENDAR_COLORS[index % CALENDAR_COLORS.length];
 };
 const ACTIONS = {
   light: 'toggle', switch: 'toggle', input_boolean: 'toggle',
@@ -68,7 +83,10 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .day-body.events-only{grid-template-columns:minmax(0,1fr)}
 .weather{display:grid;justify-items:center;gap:3px;font-size:.75rem;font-variant-numeric:tabular-nums}
 .weather-button{border:0;background:transparent;padding:0;width:44px;height:44px;font-size:1.25rem}
-.range{position:relative;width:5px;height:42px;border-radius:4px;background:linear-gradient(#fb9958,#79b7ee)}
+.range{position:relative;width:6px;height:42px;border-radius:4px;background:linear-gradient(to top,#3b82f6,#ef4444)}
+.range.wide-range{background:linear-gradient(to top,#3b82f6,#facc15,#ef4444)}
+.current[hidden]{display:none}
+.quick-control ha-icon{flex:none;--mdc-icon-size:24px}
 .current{position:absolute;top:var(--position);left:50%;width:9px;height:9px;transform:translate(-50%,-50%);border:1px solid #304459;border-radius:50%;background:white}
 .calendar-header,.month-top,.detail-header{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .calendar-header h2,.month-top h3,.detail-header h3{margin:0}
@@ -137,8 +155,11 @@ main {container-type:inline-size}
 small,.muted,.day-event summary .description-preview {color:var(--secondary-text-color,#627083)}
 .action-grid {grid-template-columns:repeat(4,minmax(0,1fr))}
 .quick-control {background:color-mix(in srgb,currentColor 5%,var(--fh-surface));overflow-wrap:anywhere}
-.quick-control[aria-pressed="true"] ,.view-toggle [aria-pressed="true"],
+.quick-control[aria-pressed="true"],.view-toggle [aria-pressed="true"],
 .month-day[aria-expanded="true"],.day-heading:hover,.day-heading:focus-visible {background:var(--fh-tint)}
+.quick-control[data-custom-fill] {
+  background:color-mix(in srgb,var(--action-fill) 28%,var(--fh-surface));
+}
 .month-day[aria-expanded="true"] {border-color:var(--primary-color,#4a90e2)}
 .event,.event.alt,.event.third {
   background:color-mix(in srgb,var(--event-color,#4a90e2) 20%,var(--fh-surface));
@@ -275,15 +296,17 @@ function mount(root, host) {
     const low = forecast.templow;
     const today = date.toDateString() === new Date().toDateString();
     const current = host.hass?.states[host.config.weather_entity]?.attributes.temperature;
-    const position = today && Number.isFinite(current) && high > low
-      ? Math.min(100, Math.max(0, 100 * (high-current)/(high-low))) : null;
+    const position = today ? temperaturePosition(current, high, low) : null;
+    const unit = host.hass?.states[host.config.weather_entity]?.attributes.temperature_unit
+      ?? host.hass?.config?.unit_system?.temperature;
+    const wide = high - low >= (unit === '°F' ? 18 : 10);
     const icon = WEATHER_ICONS[forecast.condition] ?? '🌡️';
     return `<div class="weather">
       <button class="weather-button" type="button" data-forecast="${index}" aria-haspopup="dialog"
         aria-label="Forecast for ${weekdays[index]} ${date.getDate()}">${icon}</button>
       ${Number.isFinite(high) ? `<span aria-label="High ${high} degrees">${high}°</span>` : ''}
-      ${Number.isFinite(high) && Number.isFinite(low) ? `<span class="range" aria-hidden="true">
-        ${position === null ? '' : `<span class="current" style="--position:${position}%"></span>`}
+      ${Number.isFinite(high) && Number.isFinite(low) ? `<span class="range ${wide ? 'wide-range' : ''}" aria-hidden="true">
+        ${today ? `<span class="current" data-high="${high}" data-low="${low}" ${position === null ? 'hidden' : ''} style="--position:${position ?? 50}%"></span>` : ''}
       </span>` : ''}
       ${Number.isFinite(low) ? `<span aria-label="Low ${low} degrees">${low}°</span>` : ''}
     </div>`;
@@ -361,8 +384,12 @@ function mount(root, host) {
     const domain = domainOf(id);
     button.type = 'button';
     button.className = 'quick-control';
+    const icon = window.document.createElement('ha-icon');
+    icon.setAttribute('aria-hidden', 'true');
+    const appearance = host.config.action_appearance?.[id] ?? {};
+    icon.icon = isIcon(appearance.icon) ? appearance.icon : ACTION_ICONS[domain];
     label.append(window.document.createTextNode(id), state);
-    button.append(label);
+    button.append(icon, label);
     controls.append(button);
     let pending = false;
     button.onclick = async () => {
@@ -375,7 +402,7 @@ function mount(root, host) {
       catch { report('Could not run '+label.firstChild.textContent+'.'); }
       finally { pending = false; updateEntities(); }
     };
-    return {id, button, label, state, busy:() => pending};
+    return {id, button, label, state, appearance, busy:() => pending};
   });
   if (!actionButtons.length) controls.textContent = 'Add entities in the card editor.';
   const widgetPanel = document.getElementById('widget-panel');
@@ -397,14 +424,24 @@ function mount(root, host) {
     for (const [id, item] of legendItems) {
       item.textContent = hass.states[id]?.attributes.friendly_name || id;
     }
-    for (const {id,button,label,state,busy} of actionButtons) {
+    for (const marker of root.querySelectorAll('.current[data-high]')) {
+      const current = hass.states[host.config.weather_entity]?.attributes.temperature;
+      const position = temperaturePosition(current, Number(marker.dataset.high), Number(marker.dataset.low));
+      marker.hidden = position === null;
+      if (position !== null) marker.style.setProperty('--position', position+'%');
+    }
+    for (const {id,button,label,state,appearance,busy} of actionButtons) {
       const entity = hass.states[id];
       label.firstChild.textContent = entity?.attributes.friendly_name || id;
       state.textContent = entity?.state ?? 'Unavailable';
       const domain = domainOf(id);
       button.disabled = busy() || !entity || ['unavailable','unknown'].includes(entity.state) ||
         (domain === 'cover' && entity.state !== 'closed');
-      if (ACTIONS[domain] === 'toggle') button.setAttribute('aria-pressed', String(entity?.state === 'on'));
+      const on = entity?.state === 'on';
+      if (ACTIONS[domain] === 'toggle') button.setAttribute('aria-pressed', String(on));
+      const fill = on ? appearance.on_color : appearance.off_color;
+      button.toggleAttribute('data-custom-fill', isHexColor(fill));
+      if (isHexColor(fill)) button.style.setProperty('--action-fill', fill);
     }
     for (const {id,card,value} of widgets) {
       const entity = hass.states[id];
@@ -600,6 +637,48 @@ class FamilyHubLiveEditor extends HTMLElement {
           row.append(' ',picker);
         }
         section.append(row);
+        if (key === 'actions') {
+          const appearance = this.config.action_appearance?.[id] ?? {};
+          const saveAppearance = (property, value) => save('action_appearance', {
+            ...this.config.action_appearance, [id]:{...appearance,[property]:value}
+          });
+          const fields = document.createElement('div');
+          const iconLabel = document.createElement('label');
+          const iconInput = document.createElement('input');
+          const suggestions = document.createElement('datalist');
+          suggestions.id = 'fh-icons-'+id.replace('.', '-');
+          for (const icon of ACTION_ICON_CHOICES) suggestions.append(new Option(icon, icon));
+          iconInput.setAttribute('list', suggestions.id);
+          iconInput.placeholder = ACTION_ICONS[domainOf(id)];
+          iconInput.value = appearance.icon ?? '';
+          iconInput.onchange = () => {
+            const value = iconInput.value.trim();
+            iconInput.setCustomValidity(value && !isIcon(value) ? 'Use an icon name such as mdi:lightbulb.' : '');
+            if (iconInput.reportValidity()) saveAppearance('icon', value);
+          };
+          iconLabel.append('Icon ',iconInput);
+          fields.append(iconLabel,suggestions);
+          const colorFields = Object.hasOwn(ACTIONS, domainOf(id)) && ACTIONS[domainOf(id)] === 'toggle'
+            ? [['off_color','Off fill'],['on_color','On fill']] : [['off_color','Button fill']];
+          for (const [property,title] of colorFields) {
+            const label = document.createElement('label');
+            const picker = document.createElement('input');
+            picker.type = 'color';
+            picker.value = isHexColor(appearance[property]) ? appearance[property] : '#4a90e2';
+            picker.onchange = () => saveAppearance(property,picker.value);
+            label.append(title+' ',picker);
+            fields.append(label);
+            if (isHexColor(appearance[property])) {
+              const reset = document.createElement('button');
+              reset.type = 'button';
+              reset.textContent = 'Use theme';
+              reset.setAttribute('aria-label', 'Use theme for '+title.toLowerCase()+' on '+name);
+              reset.onclick = () => saveAppearance(property,'');
+              fields.append(reset);
+            }
+          }
+          section.append(fields);
+        }
       }
       const picker = document.createElement('select');
       picker.setAttribute('aria-label', 'Choose '+title.toLowerCase()+' entity');
