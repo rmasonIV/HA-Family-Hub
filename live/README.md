@@ -18,6 +18,12 @@ The integration registers the card automatically for UI-managed dashboard resour
 - **Week weather** adds the daily forecast from a selected `weather.*` entity. Choose a provider that supports daily forecasts. Week view shows the icon and available high and low temperatures beside events. The temperature bar runs from blue at the low to red at the high. Yellow marks the midpoint when the range is at least 18°F or 10°C. Today’s dot follows the weather entity’s current temperature. Tap the icon for forecast details. Days outside the provider’s forecast window continue to show events. Choose **None** to turn weather off.
 - **Default calendar view** controls whether Week or Month opens first. Tap a date in Week to open its events in a dialog. In Month, tapping a date opens the details panel.
 
+## Wall displays and phones
+
+Set the dashboard view to **Panel** for a dedicated wall calendar. Panel gives its single card the available width, and Family Hub Live adjusts its padding and layout to fit. On shorter screens, Month uses more compact rows. Home Assistant's header and sidebar are outside the card.
+
+On a phone in portrait, Week stacks day cards vertically. Month keeps seven columns with colored event markers. Tap a date to open the full event list below the grid. Quick Actions uses two columns on narrow screens.
+
 ## YAML example
 
 Replace the example IDs with entities from your instance. `calendar_colors` is optional. Quote hex colors so YAML treats them as values.
