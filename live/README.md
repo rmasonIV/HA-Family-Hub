@@ -1,18 +1,38 @@
 # Family Hub Live
 
-Update the `rmasonIV/HA-Family-Hub` integration in HACS to 2026.11.1.2 or newer, then restart Home Assistant. Family Hub registers the card automatically for UI-managed dashboard resources.
+Family Hub Live combines a Week or Month calendar, Quick Actions, and live entity widgets in one Home Assistant card. The layout follows your active Home Assistant theme.
 
-On your production dashboard, enter edit mode and add **Family Hub Live** from the card picker. A Panel view gives it the full width. Select your calendars, Quick Actions and Quick Widgets in the card editor. Once you have saved those settings, remove the previous calendar card or replace it directly using the YAML below.
+## Add it to your dashboard
+
+1. Update the `rmasonIV/HA-Family-Hub` integration through HACS and restart Home Assistant.
+2. Open your dashboard in edit mode and add **Family Hub Live**. Use a Panel view if you want the calendar to fill the view.
+3. Select your calendars, actions, and widgets in the card editor, then save. If you are replacing an existing calendar card, remove it after saving the new card.
+
+The integration registers the card automatically for UI-managed dashboard resources. For YAML-managed resources, register `/family_hub/family-hub-live.js` as a JavaScript module. If you previously added the manual `/local/family-hub-live/` resource, remove it so the dashboard loads the integration-managed copy.
+
+## Configure the layout
+
+- **Calendars** receive distinct default colors for the first eight calendars. Use the color picker next to each calendar name to override its color. The legend identifies calendars by their Home Assistant names, and the same colors appear in Week, Month, and event details.
+- **Quick Actions** holds up to four buttons. Wide layouts reserve four slots, and narrow layouts use two columns. Tap the header to collapse or expand the actions. Supported actions include toggling lights and switches, running scripts, pressing buttons, and opening closed covers after confirmation.
+- **Quick Widgets** displays up to four entity states. Choose side-by-side cards or a full-width stack. A complete Lovelace card such as `custom:pollenprognos-card` can be placed below Family Hub Live in a Vertical Stack.
+- **Default calendar view** controls whether Week or Month opens first. Tap a date in Week to open its events in a dialog. In Month, tapping a date opens the details panel.
+
+## YAML example
+
+Replace the example IDs with entities from your instance. `calendar_colors` is optional. Quote hex colors so YAML treats them as values.
 
 ```yaml
 type: custom:family-hub-live
-calendars: []
-actions: []
-widgets: []
-default_view: week
+calendars:
+  - calendar.family
+  - calendar.school
+calendar_colors:
+  calendar.family: "#4a90e2"
+  calendar.school: "#2ba675"
+actions:
+  - light.living_room
+widgets:
+  - sensor.outdoor_temperature
+default_view: month
 widget_layout: grid
 ```
-
-Use your Home Assistant entity IDs in the three lists. The editor accepts up to four actions and four widgets. To use YAML-managed Lovelace resources, add `/family_hub/family-hub-live.js` as a JavaScript module. If you previously added the manual `/local/family-hub-live/` resource, remove that resource to load the integration-managed version.
-
-Quick Actions can toggle lights and switches, run scripts, press buttons, and open closed covers after confirmation. Quick Widgets display the current state of each selected entity. Week and Month show live events from the selected calendars.
