@@ -10926,6 +10926,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     integration_dir = hass.config.path("custom_components", DOMAIN)
     panel_path = f"{integration_dir}/panel/theme-builder-panel.js"
     card_path = f"{integration_dir}/card/family-week-calendar-card.js"
+    live_card_path = f"{integration_dir}/card/family-hub-live.js"
+    live_card_url = "/family_hub/family-hub-live.js"
     theme_selector_path = f"{integration_dir}/panel/theme-selector-card.js"
     today_card_path = f"{integration_dir}/card/family-today-card.js"
     screensaver_card_path = f"{integration_dir}/card/family-screensaver-card.js"
@@ -10960,6 +10962,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         StaticPathConfig("/family_hub_fonts", f"{integration_dir}/card/fonts", True),
         StaticPathConfig(PANEL_JS_URL, panel_path, False),
         StaticPathConfig(CARD_JS_URL, card_path, False),
+        StaticPathConfig(live_card_url, live_card_path, False),
         StaticPathConfig(THEME_SELECTOR_CARD_JS_URL, theme_selector_path, False),
         StaticPathConfig(TODAY_CARD_JS_URL, today_card_path, False),
         StaticPathConfig(SCREENSAVER_CARD_JS_URL, screensaver_card_path, False),
@@ -10995,6 +10998,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     recipe_box_card_hash = await hass.async_add_executor_job(_file_content_hash, recipe_box_card_path)
     right_now_card_hash = await hass.async_add_executor_job(_file_content_hash, right_now_card_path)
     companion_card_hash = await hass.async_add_executor_job(_file_content_hash, companion_card_path)
+    live_card_hash = await hass.async_add_executor_job(_file_content_hash, live_card_path)
     panel_url_versioned = f"{PANEL_JS_URL}?v={panel_hash}"
     card_url_versioned = f"{CARD_JS_URL}?v={card_hash}"
     theme_selector_url_versioned = f"{THEME_SELECTOR_CARD_JS_URL}?v={theme_selector_hash}"
@@ -11033,6 +11037,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.debug("Family Hub panel already registered")
 
     _register_dashboard_resource(hass, card_url_versioned)
+    _register_dashboard_resource(hass, f"{live_card_url}?v={live_card_hash}")
     _register_dashboard_resource(hass, theme_selector_url_versioned)
     _register_dashboard_resource(hass, today_card_url_versioned)
     _register_dashboard_resource(hass, screensaver_card_url_versioned)
