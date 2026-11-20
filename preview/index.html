@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Hub — Demo Preview</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#223047;background:#f1f4f8}
+*{box-sizing:border-box}body{margin:0}main{max-width:1500px;margin:auto;padding:20px}
+header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-radius:9px;margin:14px 0}
+.layout{display:grid;gap:14px;margin-top:16px}
+.quick-actions{background:white;border:1px solid #dce2e9;border-radius:12px}
+.quick-actions.pinned{position:sticky;top:0;z-index:2}
+.quick-header{display:flex;align-items:center;gap:8px;padding:0 10px}
+.quick-header button{min-height:44px;border:0;background:transparent;color:inherit}
+#quick-toggle{flex:1;text-align:left;font-weight:600}
+#quick-pin[aria-pressed="true"]{background:#dceafb}
+.action-grid,.widget-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,175px),1fr));gap:12px}
+.action-grid{padding:12px;border-top:1px solid #dce2e9}
+.quick-control{display:flex;align-items:center;gap:10px;min-height:64px;padding:10px;border:1px solid #cbd5e1;border-radius:9px;background:#f4f7fb;text-align:left;color:inherit}
+.quick-control[aria-pressed="true"]{background:#fff1bf}
+.quick-control small,.device strong{display:block}
+.toolbar-top{display:flex;align-items:center;justify-content:flex-end;margin:14px 0 8px}
+.settings-button,.action-button{border:1px solid #cbd5e1;border-radius:9px;background:white;padding:10px 14px;min-height:44px}
+.settings-button{display:flex;align-items:center;gap:8px}
+.settings{background:white;border:1px solid #cbd5e1;border-radius:12px;padding:18px;margin:12px 0}
+.settings[hidden],.device[hidden],.side[hidden],.action-grid[hidden],.quick-control[hidden]{display:none!important}
+.settings-head{display:flex;align-items:center;justify-content:space-between}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.settings fieldset{border:1px solid #dbe2ea;border-radius:9px;padding:14px}
+.settings label{display:flex;align-items:center;gap:8px;margin:10px 0}
+.settings select{max-width:100%;padding:8px;border-radius:6px}
+.settings .helper{font-size:.85rem;color:#627083}
+
+.calendar,.side{background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px #0001}
+.days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}
+.day{border:1px solid #dce2e9;border-radius:9px;min-height:180px;padding:8px;overflow-wrap:anywhere}
+.day,.month-day{box-shadow:0 2px 4px #22304714,0 1px 1px #2230470a}
+.day-heading{display:block;width:100%;min-height:44px;margin-bottom:4px;border:0;border-radius:6px;background:transparent;color:inherit;font-weight:700;text-align:center}
+.day-heading:hover,.day-heading:focus-visible{background:#eaf1fa}
+#week-day-details{width:min(540px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}
+.day-body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:start}
+.events{text-align:left}
+.events .event{padding-inline:4px}
+.day-body.events-only{grid-template-columns:minmax(0,1fr)}
+.weather{display:grid;justify-items:center;gap:3px;font-size:.75rem;font-variant-numeric:tabular-nums}
+.weather-button{border:0;background:transparent;padding:0;width:44px;height:44px;font-size:1.25rem}
+.range{position:relative;width:5px;height:42px;border-radius:4px;background:linear-gradient(#fb9958,#79b7ee)}
+.current{position:absolute;top:var(--position);left:50%;width:9px;height:9px;transform:translate(-50%,-50%);border:1px solid #304459;border-radius:50%;background:white}
+.calendar-header,.month-top,.detail-header{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.calendar-header h2,.month-top h3,.detail-header h3{margin:0}
+.calendar-header{margin-bottom:12px}
+.view-toggle [aria-pressed="true"],.month-day[aria-expanded="true"]{background:#dceafb}
+.month-top{margin-bottom:10px}.month-navigation{display:flex;gap:6px}
+.month-content{display:grid;gap:12px}
+.month-content.has-details{grid-template-columns:minmax(0,1fr) minmax(220px,32%)}
+.month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.weekday{text-align:center;font-size:.75rem}
+.month-day{display:grid;align-content:start;gap:3px;min-width:0;min-height:66px;text-align:left;border:1px solid #dce2e9;border-radius:7px;background:white;padding:5px;color:inherit}
+.month-content:not(.has-details) .month-day{min-height:clamp(86px,11vh,125px)}
+.day-details{display:flex;flex-direction:column;min-height:0;contain:size}
+.day-details[hidden]{display:none}
+#day-events{overflow-y:auto;overscroll-behavior:contain}
+.day-event{margin:6px 0;padding:10px}
+.day-event p{margin:4px 0;overflow-wrap:anywhere}
+.event-meta{display:flex;align-items:baseline;gap:6px}
+.event-icon{flex:0 0 1.2em;text-align:center}
+.day-event details{margin-top:6px}
+.day-event summary{cursor:pointer;min-height:32px}
+.day-event summary .description-preview{margin-inline-start:1.2em;color:#4a596b}
+.day-event .description-full{margin-inline-start:1.2em}
+.description-preview{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.day-event details[open] .description-preview{display:none}
+#quick-pin{min-width:88px;border:1px solid #cbd5e1;border-radius:8px;min-height:38px}
+.settings-list{list-style:none;padding:0}
+.settings-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.widget-grid.wide{grid-template-columns:minmax(0,1fr)}
+.month-day .event{padding:3px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.72rem}
+.month-day-top{display:flex;justify-content:space-between;gap:1px}
+.day-details{border:1px solid #dce2e9;border-radius:9px;padding:10px;align-self:stretch}
+.detail-header h3{font-size:1rem}
+dialog{width:min(380px,calc(100% - 32px));border:1px solid #cbd5e1;border-radius:12px;padding:22px;color:inherit}
+dialog::backdrop{background:#22304770}
+@media(max-width:800px){
+  .month-content.has-details{grid-template-columns:minmax(0,1fr)}
+  .day-details{contain:none;max-height:360px}
+  .month-content:not(.has-details) .month-day{min-height:76px}
+  .month-day .event{font-size:0;min-height:4px;padding:0}
+}
+.event{display:block;background:#dceafb;border-radius:6px;padding:7px;margin:6px 0;font-size:.85rem}
+.event.alt{background:#e8f4dc}.event.third{background:#fae8dd}
+.side h3{margin-top:0}.device{padding:12px;border:1px solid #e2e6eb;border-radius:9px;margin:10px 0}
+button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;background:#e4ebf6;padding:8px 12px}
+@media(max-width:1100px){.days{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:850px){.days{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:440px){main{padding:10px}.calendar{padding:10px}.days{grid-template-columns:minmax(0,1fr)}.day{min-height:120px}}
+</style></head><body><main>
+<header><div><h1>Family Hub</h1><small>Development preview — fictional household</small></div><small>Static demo · No Home Assistant connection</small></header>
+<p class="notice">This preview uses invented events and simulated controls. Nothing here connects to a real home.</p>
+<div class="toolbar-top"><button id="settings-open" class="settings-button" type="button" aria-expanded="false" aria-controls="settings">⚙️ Dashboard settings</button></div>
+<section id="settings" class="settings" aria-label="Dashboard configuration" hidden>
+<div class="settings-head"><h2>Configure Family Hub</h2><button class="action-button" id="settings-close" type="button">Done</button></div>
+<p class="helper">Choose the controls and information cards to show on this dashboard.</p>
+<div class="settings-grid">
+<fieldset><legend><strong>Quick Actions</strong></legend>
+<ul class="settings-list" id="action-settings"></ul>
+<label>Action <select id="add-action"></select></label>
+<button class="action-button" type="button" id="append-action">+ Add action</button>
+<p class="helper">Up to 4 actions.</p>
+</fieldset>
+<fieldset><legend><strong>Quick Widgets</strong></legend>
+<ul class="settings-list" id="widget-settings"></ul>
+<label>Widget <select id="add-widget"></select></label>
+<button class="action-button" type="button" id="append-widget">+ Add widget</button>
+<p class="helper">Up to 4 widgets.</p>
+<label>Widget layout <select id="widget-layout"><option value="grid">Side by side</option><option value="wide">Full width, stacked</option></select></label>
+</fieldset>
+<fieldset><legend><strong>Calendar</strong></legend>
+<label><input type="checkbox" data-config="weather"> Show weather on the calendar</label>
+<label>Default view <select id="default-view"><option value="week">Week</option><option value="month">Month</option></select></label>
+</fieldset>
+</div>
+<p class="helper">Demo-only settings persist in this browser. Entity selection will be added when connected to Home Assistant.</p>
+</section>
+<section class="quick-actions" aria-label="Quick Actions" id="quick-actions">
+  <div class="quick-header">
+    <button type="button" id="quick-toggle" aria-controls="quick-controls" aria-expanded="true">Quick Actions</button>
+    <button type="button" id="quick-pin" aria-label="Pin Quick Actions" aria-pressed="false">Pin</button>
+  </div>
+  <div class="action-grid" id="quick-controls">
+    <button class="quick-control" id="light" type="button" data-action="lights" aria-pressed="false"><span aria-hidden="true">💡</span><span>Living room light<small id="light-state">Off</small></span></button>
+    <button class="quick-control" id="garage" type="button" data-action="garage"><span aria-hidden="true">🚙</span><span>Open garage<small id="garage-state">Closed</small></span></button>
+    <button class="quick-control" id="routine" type="button" data-action="script"><span aria-hidden="true">🌙</span><span>Evening routine<small>Run script</small></span></button>
+    <span id="no-actions" hidden>No actions configured. Add them in Dashboard settings.</span>
+  </div>
+</section>
+<div class="layout" id="layout">
+<section class="calendar" aria-label="Family calendar">
+<div class="calendar-header">
+  <h2>Family calendar</h2>
+  <div class="view-toggle" role="group" aria-label="Calendar view">
+    <button class="action-button" id="week-view" type="button" aria-pressed="true">Week</button>
+    <button class="action-button" id="month-view" type="button" aria-pressed="false">Month</button>
+  </div>
+</div>
+<div id="week"><div class="days" id="week-days"></div></div>
+<div id="month" hidden>
+  <div class="month-top">
+    <h3 id="month-title"></h3>
+    <div class="month-navigation">
+      <button class="action-button" id="previous-month" type="button" aria-label="Previous month">‹</button>
+      <button class="action-button" id="next-month" type="button" aria-label="Next month">›</button>
+    </div>
+  </div>
+  <div class="month-content" id="month-content">
+    <div class="month-grid" id="month-grid" aria-labelledby="month-title"></div>
+    <aside class="day-details" id="day-details" aria-labelledby="day-title" hidden>
+      <div class="detail-header">
+        <h3 id="day-title"></h3>
+        <button class="action-button" type="button" id="close-day" aria-label="Close day details">×</button>
+      </div>
+      <div id="day-events" tabindex="0" role="region" aria-label="Events for selected day"></div>
+    </aside>
+  </div>
+</div>
+</section>
+<section class="side" id="widget-panel" aria-labelledby="widgets-title">
+<h3 id="widgets-title">Quick Widgets</h3>
+<div class="widget-grid">
+  <div class="device" data-widget="forecast">☀️ Weather forecast<strong>Sunny · 72°F</strong><small>High 77°F · Low 58°F</small></div>
+  <div class="device" data-widget="pollen">🌿 Pollen<strong>Moderate</strong><small>Tree pollen is the main contributor</small></div>
+  <div class="device" data-widget="climate">🌡️ Thermostat<strong>70°F</strong><small>Indoor temperature</small></div>
+</div>
+</section>
+</div><p class="muted" id="status" role="status"></p>
+<dialog id="week-day-details" aria-labelledby="week-day-title">
+  <div class="detail-header">
+    <h2 id="week-day-title"></h2>
+    <form method="dialog"><button class="action-button" aria-label="Close day details">×</button></form>
+  </div>
+  <div id="week-day-events"></div>
+</dialog>
+<dialog id="weather-details" aria-labelledby="weather-title">
+  <div class="detail-header">
+    <h2 id="weather-title"></h2>
+    <form method="dialog"><button class="action-button" aria-label="Close weather details">×</button></form>
+  </div>
+  <p id="weather-summary"></p>
+</dialog>
+<dialog id="garage-confirm" aria-labelledby="garage-title">
+  <h2 id="garage-title">Open the garage?</h2>
+  <form method="dialog">
+    <button class="action-button" value="cancel" autofocus>Cancel</button>
+    <button class="action-button" value="open">Open garage</button>
+  </form>
+</dialog>
+</main>
+<script>
+const KEY='family-hub.demo.configuration.v1';
+const defaults = {
+  configured: ['weather', 'lights', 'climate', 'garage', 'script', 'forecast', 'pollen'],
+  expanded: true,
+  pinned: false,
+  defaultView: 'week',
+  widgetLayout: 'grid'
+};
+let stored;
+try { stored = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (_) {}
+const state = {...defaults, ...stored};
+if (!Array.isArray(state.configured)) state.configured = [...defaults.configured];
+if (Array.isArray(stored?.configured) && !('expanded' in stored)) {
+  state.configured = [...new Set([...state.configured, 'garage', 'script', 'forecast', 'pollen'])];
+}
+const panel = document.getElementById('widget-panel');
+const quick = document.getElementById('quick-actions');
+const quickToggle = document.getElementById('quick-toggle');
+const quickPin = document.getElementById('quick-pin');
+const quickControls = document.getElementById('quick-controls');
+const actionButtons = [...quickControls.querySelectorAll('[data-action]')];
+const widgetCards = [...panel.querySelectorAll('[data-widget]')];
+const configInputs = [...document.querySelectorAll('[data-config]')];
+
+function updateQuickActions() {
+  quickControls.hidden = !state.expanded;
+  quickToggle.setAttribute('aria-expanded', String(state.expanded));
+  quickToggle.textContent = state.expanded ? '▾ Quick Actions' : '▸ Quick Actions';
+  quick.classList.toggle('pinned', state.pinned);
+  quickPin.setAttribute('aria-pressed', String(state.pinned));
+  quickPin.textContent = state.pinned ? '✓ Pinned' : 'Pin';
+  quickPin.setAttribute('aria-label', state.pinned ? 'Unpin Quick Actions' : 'Pin Quick Actions');
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (_) {}
+}
+
+function refresh() {
+  for (const button of actionButtons) button.hidden = !state.configured.includes(button.dataset.action);
+  for (const card of widgetCards) card.hidden = !state.configured.includes(card.dataset.widget);
+  document.getElementById('no-actions').hidden = actionButtons.some(button => !button.hidden);
+  panel.hidden = widgetCards.every(card => card.hidden);
+  for (const input of configInputs) input.checked = state.configured.includes(input.dataset.config);
+  for (const group of settingsGroups) renderSettingsGroup(group);
+  panel.querySelector('.widget-grid').classList.toggle('wide', state.widgetLayout === 'wide');
+  updateQuickActions();
+  renderCalendar();
+}
+
+quickToggle.addEventListener('click', () => {
+  state.expanded = !state.expanded;
+  if (!state.expanded) state.pinned = false;
+  updateQuickActions();
+});
+quickPin.addEventListener('click', () => {
+  state.pinned = !state.pinned;
+  if (state.pinned) state.expanded = true;
+  updateQuickActions();
+});
+for (const input of configInputs) {
+  input.addEventListener('change', () => {
+    const id = input.dataset.config;
+    state.configured = input.checked ? [...state.configured, id] : state.configured.filter(item => item !== id);
+    refresh();
+  });
+}
+const settingsGroups = [
+  {type:'action', options:{lights:'Living room light', garage:'Open garage', script:'Evening routine'}},
+  {type:'widget', options:{forecast:'Weather forecast', pollen:'Pollen', climate:'Thermostat status'}}
+];
+function renderSettingsGroup({type, options}) {
+  const active = Object.keys(options).filter(id => state.configured.includes(id));
+  const available = Object.keys(options).filter(id => !state.configured.includes(id));
+  const list = document.getElementById(type+'-settings');
+  const select = document.getElementById('add-'+type);
+  const full = active.length >= 4;
+  list.innerHTML = active.map(id => `<li>${options[id]} <button type="button" class="action-button" data-remove="${id}" aria-label="Remove ${options[id]}">Remove</button></li>`).join('');
+  select.innerHTML = available.length
+    ? available.map(id => `<option value="${id}">${options[id]}</option>`).join('')
+    : '<option value="">All examples added</option>';
+  select.disabled = full || !available.length;
+  document.getElementById('append-'+type).disabled = select.disabled;
+}
+for (const {type, options} of settingsGroups) {
+  document.getElementById(type+'-settings').addEventListener('click', event => {
+    const button = event.target.closest('[data-remove]');
+    if (!button) return;
+    state.configured = state.configured.filter(id => id !== button.dataset.remove);
+    refresh();
+    document.getElementById('add-'+type).focus();
+  });
+  document.getElementById('append-'+type).addEventListener('click', () => {
+    const id = document.getElementById('add-'+type).value;
+    if (Object.hasOwn(options, id) && !state.configured.includes(id) &&
+        Object.keys(options).filter(item => state.configured.includes(item)).length < 4) {
+      state.configured.push(id);
+      refresh();
+      document.querySelector(`[data-remove="${id}"]`).focus();
+    }
+  });
+}
+for (const [id, key] of [['default-view','defaultView'], ['widget-layout','widgetLayout']]) {
+  const select = document.getElementById(id);
+  select.value = state[key];
+  select.addEventListener('change', () => {
+    state[key] = select.value;
+    if (key === 'defaultView') monthView = select.value === 'month';
+    refresh();
+  });
+}
+const settings=document.getElementById('settings'),open=document.getElementById('settings-open');
+function showSettings(show){settings.hidden=!show;open.setAttribute('aria-expanded',String(show));}
+open.addEventListener('click',()=>showSettings(settings.hidden));
+document.getElementById('settings-close').addEventListener('click',()=>showSettings(false));
+const light = document.getElementById('light');
+light.addEventListener('click', () => {
+  const on = light.getAttribute('aria-pressed') !== 'true';
+  light.setAttribute('aria-pressed', String(on));
+  document.getElementById('light-state').textContent = on ? 'On' : 'Off';
+});
+const garage = document.getElementById('garage');
+const garageConfirm = document.getElementById('garage-confirm');
+const status = document.getElementById('status');
+garage.addEventListener('click', () => {
+  garageConfirm.returnValue = '';
+  garageConfirm.showModal();
+});
+garageConfirm.addEventListener('close', () => {
+  if (garageConfirm.returnValue !== 'open') return;
+  document.getElementById('garage-state').textContent = 'Open';
+  garage.disabled = true;
+  status.textContent = 'Garage opened in the demo.';
+});
+document.getElementById('routine').addEventListener('click', () => {
+  status.textContent = 'Evening routine ran in the demo.';
+});
+const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const demoDays = [
+  {icon:'☀️', condition:'Sunny', high:75, low:55, events:[['School drop-off','',{time:'7:30–8:00 AM'}], ['Soccer practice','alt',{time:'5:00–6:00 PM',location:'Field 2',description:'Bring a water bottle and shin guards. Meet Coach Lee at the north gate ten minutes before practice.'}]]},
+  {icon:'🌤️', condition:'Mostly sunny', high:76, low:57, events:[['Library day','third',{time:'All day'}], ['Taco Tuesday','alt',{time:'6:00–7:00 PM'}]]},
+  {icon:'☀️', condition:'Sunny', high:77, low:58, current:72, events:[['Dentist appointment', '', {time:'9:00–9:45 AM', location:'Oak Dental · 123 Example Lane', description:'Bring the updated insurance card and arrive 10 minutes early to check in. Ask the front desk to verify the new insurance on file. After the appointment, pick up the school excuse note and schedule the next cleaning. The office is on the second floor, and parking is on the east side of the building.'}], ['Pick up library holds', 'third', {time:'12:15–12:35 PM', location:'Cedar Library · Curbside pickup'}], ['School project supplies', 'alt', {time:'4:30–5:15 PM', description:'Pick up poster board, glue sticks, and a black marker. Check the supply drawer before leaving so we only buy what we need.'}]]},
+  {icon:'⛅', condition:'Partly cloudy', high:74, low:61, events:[['Team practice','alt',{time:'4:30–5:30 PM'}]]},
+  {icon:'🌧️', condition:'Rain', high:68, low:57, events:[['Movie night','third',{time:'7:00–9:00 PM'}]]},
+  {icon:'🌥️', condition:'Mostly cloudy', high:66, low:53, events:[['Family outing','',{time:'All day'}]]},
+  {icon:'☀️', condition:'Sunny', high:71, low:52, events:[['Meal planning','alt',{time:'4:00–4:30 PM'}]]}
+];
+const weekDays = document.getElementById('week-days');
+const monthGrid = document.getElementById('month-grid');
+const dayDetails = document.getElementById('day-details');
+const weatherDetails = document.getElementById('weather-details');
+let monthView = state.defaultView === 'month';
+let month = new Date(2026, 10, 1);
+let selectedDay = null;
+
+function eventCards(events, tag = 'div') {
+  return events.map(([title, color = '']) => `<${tag} class="event ${color}">${title}</${tag}>`).join('');
+}
+
+function dayEventCards(events) {
+  return events.map(([title, color = '', details = {}]) => `<article class="event day-event ${color}">
+    <strong>${title}</strong>
+    ${details.time ? `<p class="event-meta"><span class="event-icon" role="img" aria-label="Time">🕒</span><span>${details.time}</span></p>` : ''}
+    ${details.location ? `<p class="event-meta"><span class="event-icon" role="img" aria-label="Location">📍</span><span>${details.location}</span></p>` : ''}
+    ${details.description ? `<details>
+      <summary><span class="event-icon" aria-hidden="true">📝</span> Event notes
+        <span class="description-preview">${details.description}</span>
+      </summary>
+      <p class="description-full">${details.description}</p>
+    </details>` : ''}
+  </article>`).join('');
+}
+
+function weatherSummary(day, index) {
+  const marker = day.current === undefined ? '' :
+    `<span class="current" style="--position:${100*(day.high-day.current)/(day.high-day.low)}%"></span>`;
+  return `<div class="weather">
+    <button class="weather-button" type="button" data-forecast="${index}"
+      aria-label="Weather details for ${weekdays[index]} ${16+index}">${day.icon}</button>
+    <span aria-label="High ${day.high} degrees">${day.high}°</span>
+    <span class="range" role="img" aria-label="${day.current === undefined ? 'Forecast temperature range' : 'Current temperature '+day.current+' degrees'}">${marker}</span>
+    <span aria-label="Low ${day.low} degrees">${day.low}°</span>
+  </div>`;
+}
+
+function renderCalendar() {
+  const showWeather = state.configured.includes('weather');
+  document.getElementById('week').hidden = monthView;
+  document.getElementById('month').hidden = !monthView;
+  document.getElementById('week-view').setAttribute('aria-pressed', String(!monthView));
+  document.getElementById('month-view').setAttribute('aria-pressed', String(monthView));
+  if (!monthView) {
+    weekDays.innerHTML = demoDays.map((day, index) => `<article class="day">
+      <button type="button" class="day-heading" data-week-day="${index}" aria-haspopup="dialog" aria-label="View events for ${weekdays[index]} ${16+index}">${weekdays[index]} ${16+index}</button>
+      <div class="day-body ${showWeather ? '' : 'events-only'}">
+        ${showWeather ? weatherSummary(day, index) : ''}
+        <div class="events">${eventCards(day.events)}</div>
+      </div>
+    </article>`).join('');
+    return;
+  }
+
+  const year = month.getFullYear();
+  const monthNumber = month.getMonth();
+  const offset = (month.getDay()+6)%7;
+  const dayCount = new Date(year, monthNumber+1, 0).getDate();
+  const getDemoDay = day => year === 2026 && monthNumber === 10 ? demoDays[day-16] : undefined;
+  document.getElementById('month-title').textContent = month.toLocaleDateString('en-US', {month:'long', year:'numeric'});
+  monthGrid.innerHTML = weekdays.map(day => `<div class="weekday">${day}</div>`).join('') +
+    '<span aria-hidden="true"></span>'.repeat(offset) +
+    Array.from({length:dayCount}, (_, index) => {
+      const day = index+1;
+      const demo = getDemoDay(day);
+      return `<button type="button" class="month-day" data-day="${day}" aria-controls="day-details"
+        aria-expanded="${day === selectedDay}">
+        <span class="month-day-top">${day}${showWeather && demo ? `<span title="${demo.condition}">${demo.icon}</span>` : ''}</span>
+        ${eventCards(demo?.events ?? [], 'span')}
+      </button>`;
+    }).join('');
+  dayDetails.hidden = selectedDay === null;
+  document.getElementById('month-content').classList.toggle('has-details', selectedDay !== null);
+  if (selectedDay !== null) {
+    document.getElementById('day-title').textContent = new Date(year, monthNumber, selectedDay)
+      .toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+    const demo = getDemoDay(selectedDay);
+    const eventList = document.getElementById('day-events');
+    eventList.scrollTop = 0;
+    eventList.innerHTML =
+      (showWeather && demo ? `<p>${demo.icon} ${demo.high}° / ${demo.low}°</p>` : '') +
+      (demo ? dayEventCards(demo.events) : '<p>No events</p>');
+  }
+}
+
+weekDays.addEventListener('click', event => {
+  const dayButton = event.target.closest('[data-week-day]');
+  if (dayButton) {
+    const index = Number(dayButton.dataset.weekDay);
+    const dialog = document.getElementById('week-day-details');
+    document.getElementById('week-day-title').textContent = new Date(2026, 10, 16+index)
+      .toLocaleDateString('en-US', {weekday:'long', month:'short', day:'numeric'});
+    document.getElementById('week-day-events').innerHTML = dayEventCards(demoDays[index].events) || '<p>No events</p>';
+    dialog.showModal();
+    dialog.scrollTop = 0;
+    return;
+  }
+  const button = event.target.closest('[data-forecast]');
+  if (!button) return;
+  const index = Number(button.dataset.forecast);
+  const day = demoDays[index];
+  document.getElementById('weather-title').textContent = `Weather for ${weekdays[index]} ${16+index}`;
+  document.getElementById('weather-summary').textContent =
+    `${day.condition}. High ${day.high}°F, low ${day.low}°F.` +
+    (day.current === undefined ? '' : ` Current temperature ${day.current}°F.`);
+  weatherDetails.showModal();
+});
+document.getElementById('week-view').addEventListener('click', () => {
+  monthView = false;
+  renderCalendar();
+});
+document.getElementById('month-view').addEventListener('click', () => {
+  monthView = true;
+  renderCalendar();
+});
+monthGrid.addEventListener('click', event => {
+  const button = event.target.closest('[data-day]');
+  if (!button) return;
+  const day = Number(button.dataset.day);
+  selectedDay = selectedDay === day ? null : day;
+  renderCalendar();
+  monthGrid.querySelector(`[data-day="${day}"]`).focus();
+});
+document.getElementById('close-day').addEventListener('click', () => {
+  const day = selectedDay;
+  selectedDay = null;
+  renderCalendar();
+  monthGrid.querySelector(`[data-day="${day}"]`).focus();
+});
+for (const [id, direction] of [['previous-month', -1], ['next-month', 1]]) {
+  document.getElementById(id).addEventListener('click', () => {
+    month = new Date(month.getFullYear(), month.getMonth()+direction, 1);
+    selectedDay = null;
+    renderCalendar();
+  });
+}
+refresh();
+</script></body></html>
