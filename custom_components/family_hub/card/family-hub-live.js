@@ -313,7 +313,7 @@ function mount(root, host) {
     </div>`;
   }
   let request = 0;
-  let expanded = true;
+  let expanded = host.config.ribbon_default !== 'collapsed';
   const status = document.getElementById('status');
   const report = message => { status.textContent = message; status.hidden = !message; };
   const calendarStatus = document.getElementById('calendar-status');
@@ -717,9 +717,14 @@ class FamilyHubLiveEditor extends HTMLElement {
     weatherPicker.onchange = () => save('weather_entity', weatherPicker.value);
     weatherLabel.append('Week weather ', weatherPicker);
     this.append(weatherLabel);
+
+    const defaults = document.createElement('fieldset');
+    const defaultsHeading = document.createElement('legend');
+    defaultsHeading.textContent = 'Startup defaults';
+    defaults.append(defaultsHeading);
     for (const [key, title, options] of [
-      ['default_view','Default calendar view',{week:'Week',month:'Month'}],
-      ['widget_layout','Widget layout',{grid:'Side by side',wide:'Full-width stack'}]
+      ['default_view','Calendar opens in',{week:'Week',month:'Month'}],
+      ['ribbon_default','Quick Actions opens',{expanded:'Expanded',collapsed:'Collapsed'}]
     ]) {
       const row = document.createElement('p');
       const label = document.createElement('label');
@@ -729,8 +734,18 @@ class FamilyHubLiveEditor extends HTMLElement {
       picker.onchange = () => save(key,picker.value);
       label.append(title+' ',picker);
       row.append(label);
-      this.append(row);
+      defaults.append(row);
     }
+    this.append(defaults);
+
+    const widgetLabel = document.createElement('label');
+    const widgetPicker = document.createElement('select');
+    widgetPicker.add(new Option('Side by side', 'grid'));
+    widgetPicker.add(new Option('Full-width stack', 'wide'));
+    widgetPicker.value = this.config.widget_layout ?? 'grid';
+    widgetPicker.onchange = () => save('widget_layout', widgetPicker.value);
+    widgetLabel.append('Widget layout ',widgetPicker);
+    this.append(widgetLabel);
   }
 }
 
