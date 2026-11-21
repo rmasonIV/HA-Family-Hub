@@ -1,5 +1,7 @@
 const CARD = 'family-hub-live';
 const MAX_ITEMS = 4;
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const weekOffset = (date, firstDay) => (date.getDay() - firstDay + DAYS.length) % DAYS.length;
 const WEATHER_ICONS = {
   sunny:'☀️', clear_night:'🌙', 'clear-night':'🌙', partlycloudy:'🌤️', cloudy:'☁️',
   rainy:'🌧️', pouring:'🌧️', lightning:'⛈️', 'lightning-rainy':'⛈️', snowy:'❄️',
@@ -230,10 +232,11 @@ function mount(root, host) {
   const weekDays = document.getElementById('week-days');
   const monthGrid = document.getElementById('month-grid');
   const dayDetails = document.getElementById('day-details');
-  const weekdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const firstDay = host.config.week_start === 'sunday' ? 0 : 1;
+  const weekdays = [...DAYS.slice(firstDay), ...DAYS.slice(0, firstDay)];
   const today = new Date();
-  const monday = addDays(today, -((today.getDay()+6)%7));
-  const weekDates = weekdays.map((_, index) => addDays(monday, index));
+  const weekStart = addDays(today, -weekOffset(today, firstDay));
+  const weekDates = weekdays.map((_, index) => addDays(weekStart, index));
   let monthView = host.config.default_view === 'month';
   let month = new Date(today.getFullYear(), today.getMonth(), 1);
   let selectedDay = null;
@@ -354,12 +357,12 @@ function mount(root, host) {
       calendarStatus.textContent = 'Choose calendars in the card editor.';
       return;
     }
-    const weekEnd = addDays(monday, 7);
+    const weekEnd = addDays(weekStart, 7);
     const monthEnd = new Date(month.getFullYear(), month.getMonth()+1, 1);
-    const start = new Date(Math.min(monday, month));
+    const start = new Date(Math.min(weekStart, month));
     const end = new Date(Math.max(weekEnd, monthEnd));
     // Fetch each visible range independently to avoid pulling events between distant months.
-    const ranges = month < weekEnd && monthEnd > monday ? [[start,end]] : [[monday,weekEnd],[month,monthEnd]];
+    const ranges = month < weekEnd && monthEnd > weekStart ? [[start,end]] : [[weekStart,weekEnd],[month,monthEnd]];
     calendarStatus.textContent = 'Loading events…';
     const results = await Promise.allSettled(config.calendars.flatMap(id => ranges.map(async ([from,to]) => {
       const query = new URLSearchParams({start:from.toISOString(), end:to.toISOString()});
@@ -491,7 +494,7 @@ function mount(root, host) {
 
     const year = month.getFullYear();
     const monthNumber = month.getMonth();
-    const offset = (month.getDay()+6)%7;
+    const offset = weekOffset(month, firstDay);
     const dayCount = new Date(year, monthNumber+1, 0).getDate();
     const getDayEvents = day => eventsOn(new Date(year, monthNumber, day));
     document.getElementById('month-title').textContent = month.toLocaleDateString('en-US', {month:'long', year:'numeric'});
@@ -723,6 +726,7 @@ class FamilyHubLiveEditor extends HTMLElement {
     defaults.append(defaultsHeading);
     for (const [key, title, options] of [
       ['default_view','Calendar opens in',{week:'Week',month:'Month'}],
+      ['week_start','First day of week',{monday:'Monday',sunday:'Sunday'}],
       ['ribbon_default','Quick Actions opens',{expanded:'Expanded',collapsed:'Collapsed'}]
     ]) {
       const row = document.createElement('p');

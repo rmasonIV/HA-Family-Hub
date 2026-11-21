@@ -16,7 +16,7 @@ The integration registers the card automatically for UI-managed dashboard resour
 - **Quick Actions** holds up to four buttons. Wide layouts reserve four slots, and narrow layouts use two columns. Tap the header to collapse or expand the actions. Choose an icon from the suggestions or enter an MDI icon name. Set separate On and Off fills for toggles, or a single fill for other actions. **Use theme** restores the default fill. Supported actions include toggling lights and switches, running scripts, pressing buttons, and opening closed covers after confirmation.
 - **Quick Widgets** displays up to four entity states. The side-by-side layout reserves four slots on wide screens and two on narrow screens, even when fewer widgets are configured. Choose the full-width stack to make each widget span the card. A complete Lovelace card such as `custom:pollenprognos-card` can be placed below Family Hub Live in a Vertical Stack.
 - **Week weather** adds the daily forecast from a selected `weather.*` entity. Choose a provider that supports daily forecasts. Week view shows the icon and available high and low temperatures beside events. The temperature bar runs from blue at the low to red at the high. Yellow marks the midpoint when the range is at least 18°F or 10°C. Today’s dot follows the weather entity’s current temperature. Tap the icon for forecast details. Days outside the provider’s forecast window continue to show events. Choose **None** to turn weather off.
-- **Startup defaults** controls whether the calendar opens in Week or Month and whether Quick Actions starts expanded or collapsed. The defaults are Week and Expanded. Tap the Quick Actions header to change its state for the current visit. Tap a date in Week to open its events in a dialog. In Month, tapping a date opens the details panel.
+- **Startup defaults** controls whether the calendar opens in Week or Month and whether Quick Actions starts expanded or collapsed. The defaults are Week and Expanded. Set **First day of week** to Sunday or Monday to reorder both Week and Month. Existing cards keep Monday unless you change it. Tap the Quick Actions header to change its state for the current visit. Tap a date in Week to open its events in a dialog. In Month, tapping a date opens the details panel.
 
 ## Wall displays and phones
 
@@ -47,6 +47,7 @@ widgets:
   - sensor.outdoor_temperature
 weather_entity: weather.home
 default_view: month
+week_start: sunday
 ribbon_default: collapsed
 widget_layout: grid
 ```
