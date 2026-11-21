@@ -60,12 +60,12 @@
     temperature:74+index, templow:55+index, precipitation_probability:index%3 === 2 ? 75 : 10
   }));
   const event = (index,hour,summary,location) => {
-    const start = new Date(days[index]); start.setHours(hour);
+    const start = new Date(days[0]); start.setDate(start.getDate() + index); start.setHours(hour);
     const end = new Date(start); end.setHours(hour+1);
     return {summary,location,start:{dateTime:start.toISOString()},end:{dateTime:end.toISOString()}};
   };
   const calendars = {
-    'calendar.family':[event(0,18,'Dinner with friends','Home'),event(2,9,'Dentist appointment','Oak Dental'),event(5,11,'Family outing','Community park')],
+    'calendar.family':[event(0,18,'Dinner with friends','Home'),event(2,9,'Dentist appointment','Oak Dental'),event(5,11,'Family outing','Community park'),event(-2,16,'Board games','Home'),event(9,18,'Pasta night','Home')],
     'calendar.school':[event(1,8,'Library day','School library'),event(3,17,'Team practice','Field 2'),event(4,19,'Movie night','School gym')]
   };
   const config = {

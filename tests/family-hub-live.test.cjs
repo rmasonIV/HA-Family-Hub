@@ -232,3 +232,39 @@ test('a missing helper leaves a local error and can recover on a configuration e
   await tick();
   assert.ok(find('.widget-slot ha-card'));
 });
+
+test('Week navigation honors Sunday start and keeps browsed weeks through refreshes and view changes', async t => {
+  const {window, card, find, calls} = setup(t, {
+    calendars:['calendar.family','calendar.school'], week_start:'sunday'
+  });
+  await tick();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 15');
+  assert.match(find('#week-days').textContent, /Evening walk/);
+  const currentLabel = find('#week-title').textContent;
+
+  find('#previous-week').click();
+  await tick();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 8');
+  assert.doesNotMatch(find('#week-days').textContent, /Evening walk/);
+  find('#month-view').click();
+  find('#week-view').click();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 8');
+  find('#next-week').click();
+  await tick();
+  assert.equal(find('#week-title').textContent, currentLabel);
+  assert.match(find('#week-days').textContent, /Evening walk/);
+
+  for (let i = 0; i < 3; i++) find('#next-week').click();
+  await tick();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 6');
+  assert.ok(calls.some(path => decodeURIComponent(path).includes(
+    'start=2026-12-06T06:00:00.000Z&end=2026-12-13T06:00:00.000Z')));
+  window.Date.now = () => Date.parse('2026-11-23T06:01:00Z');
+  await card.view.loadCalendar();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 6');
+  find('#current-week').click();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 22');
+  window.Date.now = () => Date.parse('2026-11-30T06:01:00Z');
+  await card.view.loadCalendar();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 29');
+});
