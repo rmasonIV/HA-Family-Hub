@@ -239,11 +239,11 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .current[hidden]{display:none}
 .quick-control ha-icon{flex:none;--mdc-icon-size:24px}
 .current{position:absolute;top:var(--position);left:50%;width:9px;height:9px;transform:translate(-50%,-50%);border:1px solid #304459;border-radius:50%;background:white}
-.calendar-header,.month-top,.detail-header{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-.calendar-header h2,.month-top h3,.detail-header h3{margin:0}
+.calendar-header,.period-header,.detail-header{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.calendar-header h2,.period-header h3,.detail-header h3{margin:0}
 .calendar-header{margin-bottom:12px}
 .view-toggle [aria-pressed="true"],.month-day[aria-expanded="true"]{background:#dceafb}
-.month-top{margin-bottom:10px}.month-navigation{display:flex;gap:6px}
+.period-header{margin-bottom:10px}.period-navigation{display:flex;gap:6px;flex-wrap:wrap}
 .month-content{display:grid;gap:12px}
 .month-content.has-details{grid-template-columns:minmax(0,1fr) minmax(220px,32%)}
 .month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
@@ -342,11 +342,22 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
     <button class="action-button" id="month-view" type="button" aria-pressed="false">Month</button>
   </div>
 </div>
-<p class="muted" id="calendar-status" role="status"></p><ul class="calendar-legend" id="calendar-legend" aria-label="Filter by calendar"></ul><p id="weather-status" class="muted" role="status" hidden></p><div id="week"><div class="days" id="week-days"></div></div>
+<p class="muted" id="calendar-status" role="status"></p><ul class="calendar-legend" id="calendar-legend" aria-label="Filter by calendar"></ul><p id="weather-status" class="muted" role="status" hidden></p>
+<div id="week">
+  <div class="period-header">
+    <h3 id="week-title" aria-live="polite"></h3>
+    <div class="period-navigation" aria-label="Week navigation" role="group">
+      <button class="action-button" id="previous-week" type="button" aria-label="Previous week">‹</button>
+      <button class="action-button" id="current-week" type="button">This week</button>
+      <button class="action-button" id="next-week" type="button" aria-label="Next week">›</button>
+    </div>
+  </div>
+  <div class="days" id="week-days" aria-labelledby="week-title"></div>
+</div>
 <div id="month" hidden>
-  <div class="month-top">
+  <div class="period-header">
     <h3 id="month-title"></h3>
-    <div class="month-navigation">
+    <div class="period-navigation">
       <button class="action-button" id="previous-month" type="button" aria-label="Previous month">‹</button>
       <button class="action-button" id="next-month" type="button" aria-label="Next month">›</button>
     </div>
@@ -397,7 +408,10 @@ function mount(root, host) {
   let zone = host.hass?.config?.time_zone;
   let time = calendarTime(zone);
   let today = time.dayAt(Date.now());
-  let weekStart = addDays(today, -weekOffset(today, firstDay));
+  const currentWeek = () => addDays(today, -weekOffset(today, firstDay));
+  const weekLabel = new Intl.DateTimeFormat(undefined, {month:'short', day:'numeric', year:'numeric', timeZone:'UTC'});
+  let browsedWeek = null;
+  let weekStart = currentWeek();
   let weekDates = weekdays.map((_, index) => addDays(weekStart, index));
   let monthView = host.config.default_view !== 'week';
   let month = monthDate(today);
@@ -562,7 +576,10 @@ function mount(root, host) {
         }
       }
       today = newToday;
-      weekStart = addDays(today, -weekOffset(today, firstDay));
+    }
+    const nextWeekStart = browsedWeek ?? currentWeek();
+    if (+weekStart !== +nextWeekStart) {
+      weekStart = nextWeekStart;
       weekDates = weekdays.map((_, index) => addDays(weekStart, index));
     }
     redrawCalendar();
@@ -735,6 +752,9 @@ function mount(root, host) {
     document.getElementById('week-view').setAttribute('aria-pressed', String(!monthView));
     document.getElementById('month-view').setAttribute('aria-pressed', String(monthView));
     if (!monthView) {
+      const label = weekLabel.formatRange(weekStart, weekDates[weekDates.length-1]);
+      const title = document.getElementById('week-title');
+      if (title.textContent !== label) title.textContent = label;
       weekDays.innerHTML = weekDates.map((date, index) => {
         const forecast = forecasts.get(dateKey(date));
         return `<article class="day${forecast ? ' has-weather' : ''}">
@@ -841,6 +861,13 @@ function mount(root, host) {
     renderCalendar();
     monthGrid.querySelector(`[data-day="${day}"]`).focus();
   });
+  for (const [id, direction] of [['previous-week', -1], ['current-week', 0], ['next-week', 1]]) {
+    document.getElementById(id).addEventListener('click', () => {
+      const start = addDays(weekStart, direction * 7);
+      browsedWeek = direction && +start !== +currentWeek() ? start : null;
+      loadCalendar();
+    });
+  }
   for (const [id, direction] of [['previous-month', -1], ['next-month', 1]]) {
     document.getElementById(id).addEventListener('click', () => {
       month = monthDate(month, direction);
