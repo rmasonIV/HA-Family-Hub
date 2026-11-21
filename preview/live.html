@@ -69,7 +69,7 @@
     'calendar.school':[event(1,8,'Library day','School library'),event(3,17,'Team practice','Field 2'),event(4,19,'Movie night','School gym')]
   };
   const config = {
-    type:'custom:family-hub-live',default_view:'week',week_start:'sunday',weather_entity:'weather.home',
+    type:'custom:family-hub-live',default_view:'month_details',week_start:'sunday',weather_entity:'weather.home',
     calendars:Object.keys(calendars),actions:['light.living_room','cover.garage'],
     widgets:['sensor.outdoor_temperature'],action_appearance:{'light.living_room':{icon:'mdi:lamps',on_color:'#d48b22',off_color:'#738da8'}}
   };

@@ -8,11 +8,17 @@ const WEATHER_ICONS = new Map(Object.entries({
   'lightning-rainy':'lightning-rainy', snowy:'snowy', 'snowy-rainy':'snowy-rainy',
   hail:'hail', fog:'fog', windy:'windy', 'windy-variant':'windy-variant', exceptional:'cloud-alert'
 }));
-function weatherIcon(forecast) {
+function weatherCondition(condition) {
+  if (typeof condition !== 'string' || !condition) return 'Daily forecast';
+  const label = condition === 'partlycloudy' ? 'partly cloudy' : condition.replace(/[-_]/g, ' ');
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+function weatherIcon(forecast, decorative = false) {
   const icon = WEATHER_ICONS.get(forecast.condition);
-  const condition = typeof forecast.condition === 'string' ? forecast.condition.replace(/[-_]/g, ' ') : 'Forecast';
+  const label = escapeText(weatherCondition(forecast.condition));
+  const accessibility = decorative ? 'aria-hidden="true"' : `title="${label}" aria-label="${label}" role="img"`;
   return `<ha-icon icon="mdi:${icon ? (icon === 'cloud-alert' ? icon : 'weather-'+icon) : 'thermometer'}"
-    title="${escapeText(condition)}" aria-label="${escapeText(condition)}" role="img"></ha-icon>`;
+    ${accessibility}></ha-icon>`;
 }
 const temperaturePosition = (current, high, low) =>
   Number.isFinite(current) && Number.isFinite(high) && Number.isFinite(low) && high >= low
@@ -107,7 +113,7 @@ function normalizeConfig(input, warnings = []) {
     actions:list('actions', id => isEntityId(id) && Object.hasOwn(ACTIONS,domainOf(id)) && id, MAX_ITEMS),
     widgets:list('widgets', widgetKey, MAX_ITEMS),
     weather_entity:weatherEntity,
-    default_view:option('default_view', ['week','month']),
+    default_view:option('default_view', ['week','month','month_details']),
     week_start:option('week_start', ['monday','sunday']),
     ribbon_default:option('ribbon_default', ['expanded','collapsed']),
     widget_layout:option('widget_layout', ['grid','wide'])
@@ -227,10 +233,13 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .weather-button{display:grid;place-items:center;border:0;background:transparent;padding:0;width:var(--forecast-width);height:44px;font-size:1.25rem}
 .range{position:relative;width:6px;height:42px;border-radius:4px;background:linear-gradient(to top,#3b82f6,#ef4444)}
 .day .range{height:90px}
-.weather.horizontal{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}
-.weather.horizontal .range{width:48px;height:6px;background:linear-gradient(to right,#ef4444,#3b82f6)}
-.weather.horizontal .wide-range{background:linear-gradient(to right,#ef4444,#facc15,#3b82f6)}
-.weather.horizontal .current{top:50%;left:var(--position)}
+.weather.horizontal{display:grid;justify-items:stretch;gap:8px;margin:10px 0 8px;padding:10px 12px;border-radius:8px;background:var(--fh-forecast-surface);font-size:.9rem}
+.forecast-condition{display:flex;align-items:center;gap:8px;font-weight:600}
+.forecast-condition ha-icon{--mdc-icon-size:28px;flex:none}
+.forecast-temperatures{display:flex;align-items:center;gap:8px;font-weight:600}
+.weather.horizontal .range{flex:1;min-width:12px;height:8px;background:linear-gradient(to right,#3b82f6,#ef4444)}
+.weather.horizontal .wide-range{background:linear-gradient(to right,#3b82f6,#facc15,#ef4444)}
+.weather.horizontal .current{top:50%;left:calc(100% - var(--position))}
 #day-weather:empty{display:none}
 .range.wide-range{background:linear-gradient(to top,#3b82f6,#facc15,#ef4444)}
 .current[hidden]{display:none}
@@ -294,6 +303,7 @@ button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;bac
   color:var(--primary-text-color,#223047);
   background:transparent;
   --fh-surface:var(--ha-card-background,var(--card-background-color,#fff));
+  --fh-forecast-surface:color-mix(in srgb,var(--secondary-background-color,var(--fh-border)) 65%,var(--fh-surface));
   --fh-border:var(--divider-color,#dce2e9);
   --fh-tint:color-mix(in srgb,var(--primary-color,#4a90e2) 18%,var(--fh-surface));
 }
@@ -395,9 +405,9 @@ function mount(root, host) {
   let today = time.dayAt(Date.now());
   let weekStart = addDays(today, -weekOffset(today, firstDay));
   let weekDates = weekdays.map((_, index) => addDays(weekStart, index));
-  let monthView = host.config.default_view === 'month';
+  let monthView = host.config.default_view !== 'week';
   let month = monthDate(today);
-  let selectedDay = null;
+  let selectedDay = host.config.default_view === 'month_details' ? today.getUTCDate() : null;
   let calendarEvents = [];
   let selectedCalendar = null;
   const forecasts = new Map();
@@ -470,17 +480,25 @@ function mount(root, host) {
     const position = isToday ? temperaturePosition(current, high, low) : null;
     const unit = temperatureUnit();
     const wide = high - low >= (unit === '°F' ? 18 : 10);
-    const icon = weatherIcon(forecast);
     const temperatureLabel = unit ? ' '+escapeText(unit) : ' degrees';
-    const heading = index === null ? icon : `<button class="weather-button" type="button" data-forecast="${index}" aria-haspopup="dialog"
-        aria-label="Forecast for ${weekdays[index]} ${date.getUTCDate()}">${icon}</button>`;
-    return `<div class="weather${index === null ? ' horizontal' : ''}" aria-label="Daily forecast">
-      ${heading}
-      ${Number.isFinite(high) ? `<span aria-label="High ${high}${temperatureLabel}">${high}${escapeText(unit ?? '°')}</span>` : ''}
-      ${Number.isFinite(high) && Number.isFinite(low) ? `<span class="range ${wide ? 'wide-range' : ''}" aria-hidden="true">
+    const temperature = (name, value) => Number.isFinite(value)
+      ? `<span aria-label="${name} ${value}${temperatureLabel}">${value}${escapeText(unit ?? '°')}</span>` : '';
+    const range = Number.isFinite(high) && Number.isFinite(low)
+      ? `<span class="range ${wide ? 'wide-range' : ''}" aria-hidden="true">
         ${isToday ? `<span class="current" data-high="${high}" data-low="${low}" ${position === null ? 'hidden' : ''} style="--position:${position ?? 50}%"></span>` : ''}
-      </span>` : ''}
-      ${Number.isFinite(low) ? `<span aria-label="Low ${low}${temperatureLabel}">${low}${escapeText(unit ?? '°')}</span>` : ''}
+      </span>` : '';
+    const highLabel = temperature('High', high);
+    const lowLabel = temperature('Low', low);
+    if (index === null) {
+      return `<div class="weather horizontal" aria-label="Daily forecast">
+        <div class="forecast-condition">${weatherIcon(forecast, true)}<span>${escapeText(weatherCondition(forecast.condition))}</span></div>
+        ${highLabel || lowLabel ? `<div class="forecast-temperatures">${lowLabel}${range}${highLabel}</div>` : ''}
+      </div>`;
+    }
+    return `<div class="weather" aria-label="Daily forecast">
+      <button class="weather-button" type="button" data-forecast="${index}" aria-haspopup="dialog"
+        aria-label="Forecast for ${weekdays[index]} ${date.getUTCDate()}">${weatherIcon(forecast)}</button>
+      ${highLabel}${range}${lowLabel}
     </div>`;
   }
   let request = 0;
@@ -541,9 +559,13 @@ function mount(root, host) {
     }
     const newToday = time.dayAt(Date.now());
     if (+today !== +newToday) {
-      if (+month === +monthDate(today) && +month !== +monthDate(newToday)) {
-        month = monthDate(newToday);
-        selectedDay = null;
+      if (+month === +monthDate(today)) {
+        if (selectedDay === today.getUTCDate()) {
+          month = monthDate(newToday);
+          selectedDay = newToday.getUTCDate();
+        } else if (selectedDay === null) {
+          month = monthDate(newToday);
+        }
       }
       today = newToday;
       weekStart = addDays(today, -weekOffset(today, firstDay));
@@ -975,7 +997,7 @@ class FamilyHubLiveEditor extends HTMLElement {
     defaultsHeading.textContent = 'Startup defaults';
     defaults.append(defaultsHeading);
     for (const [key, title, options] of [
-      ['default_view','Calendar opens in',{week:'Week',month:'Month'}],
+      ['default_view','Calendar opens in',{week:'Week',month:'Month',month_details:'Month with details'}],
       ['week_start','First day of week',{monday:'Monday',sunday:'Sunday'}],
       ['ribbon_default','Quick Actions opens',{expanded:'Expanded',collapsed:'Collapsed'}]
     ]) {

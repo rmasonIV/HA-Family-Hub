@@ -19,7 +19,7 @@ To test a development checkout on a Home Assistant installation that already has
 | `calendars` | Empty list | Home Assistant `calendar.*` entity IDs, in legend order. |
 | `calendar_colors` | Rotating palette | Map calendar IDs to quoted six-digit hex colors. The same color appears in the legend, cells, and event details. |
 | `weather_entity` | Off | A `weather.*` entity supporting daily forecasts. Select **None** or omit the key to turn calendar weather off. |
-| `default_view` | `week` | Initial calendar view, either `week` or `month`. |
+| `default_view` | `week` | Initial calendar view. Use `week`, `month` for the full grid, or `month_details` to open Month with today’s details visible. |
 | `week_start` | `monday` | First column in both views. Choose `monday` or `sunday`. |
 | `actions` | Empty list | Up to four unique supported entity IDs. Actions support lights, switches, input booleans, scripts, buttons, input buttons, and covers. Covers only offer opening from the closed state and ask for confirmation. |
 | `action_appearance` | Domain icon and theme fill | Map action IDs to an optional `icon`, `off_color`, and `on_color`. Use `off_color` for actions other than toggles. |
@@ -29,7 +29,9 @@ To test a development checkout on a Home Assistant installation that already has
 
 Click a calendar legend button to show just that calendar. Click a different button to switch calendars, or click the selected button again to restore all calendars. The choice follows you between Week and Month and applies to their day details. The card starts with all calendars visible.
 
-In Month, today's date has its own marker and the selected date has a tinted cell. Forecast icons appear only for dates with data. Select a date to show its events and the same high, low, and temperature gradient used in Week. The bar uses yellow for spans of at least 18°F or 10°C, and today's marker shows the current temperature when available. Week forecast icons open additional forecast details. Dates use Home Assistant's configured time zone, and temperature values and units come from Home Assistant.
+In Month, today's date has its own marker and the selected date has a tinted cell. Forecast icons appear only for dates with data. Select a date to see its events and a full-width forecast panel with the condition, low, high, and temperature gradient. Close the pane with × or by selecting the same date again. The bar uses yellow for spans of at least 18°F or 10°C, and today's marker shows the current temperature when available. Week forecast icons open additional forecast details. Dates use Home Assistant's configured time zone, and temperature values and units come from Home Assistant.
+
+Calendar events refresh every five minutes while the card is open. The refresh updates today's highlight and advances an open pane that was showing today. A pane showing a different date stays on that date. Home Assistant sends daily forecast updates through its weather subscription, and entity updates move the current-temperature marker.
 
 ## Quick Widgets
 
@@ -61,7 +63,7 @@ calendar_colors:
   calendar.family: "#4a90e2"
   calendar.school: "#2ba675"
 weather_entity: weather.home
-default_view: month
+default_view: month_details
 week_start: sunday
 ribbon_default: collapsed
 actions:
