@@ -217,13 +217,16 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .day-heading{display:block;width:100%;min-height:44px;margin-bottom:4px;border:0;border-radius:6px;background:transparent;color:inherit;font-weight:700;text-align:center}
 .day-heading:hover,.day-heading:focus-visible{background:#eaf1fa}
 #week-day-details{width:min(540px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}
-.day-body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:start}
+.day.has-weather{--forecast-width:44px;display:grid;grid-template-columns:var(--forecast-width) minmax(0,1fr) var(--forecast-width);grid-template-rows:auto 1fr;align-items:start}
+.day.has-weather .day-heading{grid-area:1 / 2}
+.day.has-weather .weather{grid-area:1 / 1 / 3}
+.day.has-weather .events{grid-area:2 / 2 / 3 / -1;margin-inline-start:6px}
 .events{text-align:left}
 .events .event{padding-inline:4px}
-.day-body.events-only{grid-template-columns:minmax(0,1fr)}
 .weather{display:grid;justify-items:center;gap:3px;font-size:.75rem;font-variant-numeric:tabular-nums}
-.weather-button{border:0;background:transparent;padding:0;width:44px;height:44px;font-size:1.25rem}
+.weather-button{display:grid;place-items:center;border:0;background:transparent;padding:0;width:var(--forecast-width);height:44px;font-size:1.25rem}
 .range{position:relative;width:6px;height:42px;border-radius:4px;background:linear-gradient(to top,#3b82f6,#ef4444)}
+.day .range{height:90px}
 .weather.horizontal{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}
 .weather.horizontal .range{width:48px;height:6px;background:linear-gradient(to right,#ef4444,#3b82f6)}
 .weather.horizontal .wide-range{background:linear-gradient(to right,#ef4444,#facc15,#3b82f6)}
@@ -718,12 +721,10 @@ function mount(root, host) {
     if (!monthView) {
       weekDays.innerHTML = weekDates.map((date, index) => {
         const forecast = forecasts.get(dateKey(date));
-        return `<article class="day">
+        return `<article class="day${forecast ? ' has-weather' : ''}">
         <button type="button" class="day-heading" data-week-day="${index}" aria-haspopup="dialog" aria-label="View events for ${weekdays[index]} ${date.getUTCDate()}">${weekdays[index]} ${date.getUTCDate()}</button>
-        <div class="day-body ${forecast ? '' : 'events-only'}">
-          ${forecast ? forecastMarkup(date, index, forecast) : ''}
-          <div class="events">${eventCards(eventsOn(date))}</div>
-        </div>
+        ${forecast ? forecastMarkup(date, index, forecast) : ''}
+        <div class="events">${eventCards(eventsOn(date))}</div>
       </article>`;
       }).join('');
       return;
