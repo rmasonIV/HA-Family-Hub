@@ -23,7 +23,15 @@
   <img src="https://raw.githubusercontent.com/JVarhol/HA-Family-Hub/main/images/readme/hero-liquid-glass.webp" alt="The Family Week Calendar card in the Liquid Glass theme: a week of family events in colour-coded columns, with meals planned at the top of each day" width="100%" />
 </p>
 
+## Family Hub Live
+
+Add **Family Hub Live** to a Home Assistant dashboard for Week and Month views, shared daily forecasts, calendar filtering, four Quick Actions, and up to four built-in Home Assistant widgets. Month keeps today visible when another day is selected and shows the selected day's forecast and events in its details pane.
+
+Configure calendar and action entities in the visual editor. Use the code editor for full native card settings. Existing widget entity IDs still work, and `widget_layout: wide` keeps the full-width stack. See [Family Hub Live setup, settings, YAML examples, and troubleshooting](live/README.md).
+
 ## A look around
+
+These earlier and upstream screenshots do not reflect the current Family Hub Live layout. Updated captures are deferred until the feature is stable and will use synthetic events and device data.
 
 ### The family calendar
 

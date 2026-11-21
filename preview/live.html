@@ -16,7 +16,7 @@
 <body>
 <header>
   <h1>Family Hub Live preview</h1>
-  <span>Sample calendar, device, and weather data</span>
+  <span>Fictional calendar and weather data with a simulated Home Assistant widget</span>
   <button type="button" id="theme" aria-pressed="false">Dark theme</button>
   <button type="button" id="startup" aria-pressed="false">Start collapsed</button>
 </header>
@@ -25,9 +25,28 @@
 <script>
   if (!customElements.get('ha-icon')) {
     customElements.define('ha-icon', class extends HTMLElement {
-      set icon(value) { this.textContent = {'mdi:lamps':'💡','mdi:garage':'🚙'}[value] ?? '◆'; }
+      static observedAttributes = ['icon'];
+      set icon(value) { this.setAttribute('icon', value); }
+      attributeChangedCallback(_, oldValue, value) {
+        this.textContent = {'mdi:lamps':'💡','mdi:garage':'🚙','mdi:weather-sunny':'☀️',
+          'mdi:weather-partly-cloudy':'🌤️','mdi:weather-rainy':'🌧️'}[value] ?? '◆';
+      }
     });
   }
+  window.loadCardHelpers = async () => ({
+    createCardElement(config) {
+      const widget = document.createElement('div');
+      widget.style.cssText = 'padding:12px;border:1px solid var(--divider-color,#cbd5e1);border-radius:9px';
+      Object.defineProperty(widget, 'hass', {set(hass) {
+        const entity = hass.states[config.entity];
+        const label = document.createElement('strong');
+        label.textContent = entity.attributes.friendly_name;
+        const value = [entity.state, entity.attributes.unit_of_measurement].filter(Boolean).join(' ');
+        widget.replaceChildren(label, document.createElement('br'), value);
+      }});
+      return widget;
+    }
+  });
   const card = document.querySelector('family-hub-live');
   const state = (name, value, attributes = {}) => ({state:value, attributes:{friendly_name:name,...attributes}});
   const days = [0,1,2,3,4,5,6].map(index => {
@@ -76,7 +95,7 @@
       const entity = hass.states[id];
       if (service === 'toggle') entity.state = entity.state === 'on' ? 'off' : 'on';
       if (service === 'open_cover') entity.state = 'open';
-      card.hass = hass;
+      card.hass = {...hass};
     }
   };
   card.setConfig(config);
