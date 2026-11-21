@@ -193,6 +193,28 @@ test('config skips malformed entries, deduplicates before applying limits and pr
   assert.match(find('#config-status').textContent, /widgets must be a list/);
 });
 
+test('legacy card titles are ignored while the editor preserves widget titles', t => {
+  const config = {title:'Legacy heading', widgets:[{type:'entities', title:'Entry', entities:['sensor.outside']}]};
+  const {window, card, root, hass} = setup(t, config);
+  assert.equal(Object.hasOwn(card.config, 'title'), false);
+  assert.ok(root.querySelector('.calendar-header > #calendar-legend'));
+  assert.ok(root.querySelector('.calendar-header > .view-toggle'));
+  assert.equal(root.querySelector('.calendar-header h2'), null);
+
+  const editor = card.constructor.getConfigElement();
+  editor.setConfig(config);
+  editor.hass = hass;
+  let saved;
+  editor.addEventListener('config-changed', event => { saved = event.detail.config; });
+  const picker = editor.querySelector('select:has(option[value="month"])');
+  picker.value = 'month';
+  picker.dispatchEvent(new window.Event('change'));
+  assert.equal(saved.default_view, 'month');
+  assert.equal(Object.hasOwn(saved, 'title'), false);
+  assert.equal(saved.widgets[0].title, 'Entry');
+  assert.equal(config.title, 'Legacy heading');
+});
+
 test('native cards receive current hass, survive reconfiguration and isolate helper or card errors', async t => {
   const widgets = [{type:'gauge', entity:'sensor.level', max:100}, {type:'entities',entities:['binary_sensor.door']},
     {type:'tile',entity:'sensor.broken'}, {type:'weather-forecast',entity:'weather.error'}];

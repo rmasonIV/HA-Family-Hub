@@ -63,14 +63,14 @@
     <ul id="grocery-items" aria-label="Shopping list"></ul>
   </section>
 </dialog>
-<script src="./family-hub-live.js"></script>
+<script src="../custom_components/family_hub/card/family-hub-live.js"></script>
 <script>
   if (!customElements.get('ha-icon')) {
     customElements.define('ha-icon', class extends HTMLElement {
       static observedAttributes = ['icon'];
       set icon(value) { this.setAttribute('icon', value); }
       attributeChangedCallback(_, oldValue, value) {
-        this.textContent = {'mdi:lamps':'💡','mdi:garage':'🚙'}[value] ?? '◆';
+        this.textContent = {'mdi:lamps':'💡','mdi:garage':'🚙','mdi:power-plug':'🔌','mdi:play':'▶'}[value] ?? '◆';
       }
     });
   }
@@ -88,10 +88,16 @@
       return widget;
     }
   });
+  const capture = new URLSearchParams(location.search).has('capture');
+  if (capture) {
+    document.querySelector('header h1').textContent = 'Family Calendar';
+    document.querySelectorAll('body > header button, body > header span').forEach(element => element.hidden = true);
+  }
   const card = document.querySelector('family-hub-live');
   const kitchen = document.querySelector('#kitchen');
   const renderCard = () => {
     card.setConfig(config);
+    if (capture) return;
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = 'Kitchen';
@@ -128,47 +134,47 @@
     field.focus();
   });
   const state = (name, value, attributes = {}) => ({state:value, attributes:{friendly_name:name,...attributes}});
-  const days = [0,1,2,3,4,5,6].map(index => {
-    const date = new Date();
-    date.setDate(date.getDate() - date.getDay() + index);
-    date.setHours(12,0,0,0);
-    return date;
-  });
+  const today = new Date('2026-06-10T17:00:00Z');
+  Date.now = () => +today;
+  const days = Array.from({length:7}, (_, index) => new Date(Date.UTC(2026, 5, 7 + index, 17)));
   const forecast = days.map((date,index) => ({
     datetime:date.toISOString(), condition:['sunny','partlycloudy','rainy'][index%3],
     temperature:74+index, templow:55+index, precipitation_probability:index%3 === 2 ? 75 : 10
   }));
   const event = (index,hour,summary,location) => {
-    const start = new Date(days[0]); start.setDate(start.getDate() + index); start.setHours(hour);
-    const end = new Date(start); end.setHours(hour+1);
+    const start = new Date(days[0]); start.setUTCDate(start.getUTCDate() + index); start.setUTCHours(hour+5);
+    const end = new Date(start); end.setUTCHours(end.getUTCHours()+1);
     return {summary,location,start:{dateTime:start.toISOString()},end:{dateTime:end.toISOString()}};
   };
   const dinner = 'Lemon chickpea bowls';
   const calendars = {
-    'calendar.family':[event(0,18,'Dinner with friends','Home'),event(2,9,'Dentist appointment','Oak Dental'),event(5,11,'Family outing','Community park'),event(-2,16,'Board games','Home'),event(9,18,'Pasta night','Home')],
-    'calendar.school':[event(1,8,'Library day','School library'),event(3,17,'Team practice','Field 2'),event(4,19,'Movie night','School gym')],
-    'calendar.mealie_dinner': [event(new Date().getDay(),18,dinner,'')],
+    'calendar.family':[event(0,18,'Dinner with friends','Home'),event(2,9,'Dentist appointment','Oak Dental'),event(5,11,'Family outing','Community park'),event(-2,16,'Board games','Home'),event(9,18,'Pasta night','Home'),event(13,10,'Park cleanup','Community park'),event(20,15,'Picnic','Lakeside park')],
+    'calendar.school':[event(1,8,'Library day','School library'),event(3,17,'Team practice','Field 2'),event(4,19,'Movie night','School gym'),event(11,9,'Field trip','Science museum'),event(17,10,'Art show','School gym')],
+    'calendar.mealie_dinner': [event(3,18,dinner,'')],
   };
   const config = {
-    type:'custom:family-hub-live',default_view:'month_details',week_start:'sunday',weather_entity:'weather.home',
+    type:'custom:family-hub-live',ribbon_default:capture ? 'collapsed' : 'expanded',default_view:capture ? 'month' : 'month_details',week_start:'sunday',weather_entity:'weather.home',
     mealie:{calendar:'calendar.mealie_dinner',config_entry_id:'demo-entry',url:'https://mealie.example.test',group:'family'},
-    calendars:Object.keys(calendars),actions:['light.living_room','cover.garage'],
-    widgets:['sensor.outdoor_temperature'],action_appearance:{'light.living_room':{icon:'mdi:lamps',on_color:'#d48b22',off_color:'#738da8'}}
+    calendars:Object.keys(calendars),actions:['light.living_room','cover.garage','switch.porch','script.movie_time'],
+    widgets:['sensor.outdoor_temperature','sensor.humidity'],action_appearance:{'light.living_room':{icon:'mdi:lamps',on_color:'#d48b22',off_color:'#738da8'}}
   };
   const hass = {
+    config:{time_zone:'America/Chicago',unit_system:{temperature:'°F'}},
     states:{
       'calendar.family':state('Family','off'),
       'calendar.school':state('School','off'),
       'calendar.mealie_dinner':state('Mealie Dinner','off'),
       'light.living_room':state('Living room light','off'),
       'cover.garage':state('Garage','closed'),
+      'switch.porch':state('Porch outlet','on'),
+      'script.movie_time':state('Movie time','off'),
       'weather.home':state('Home forecast','sunny',{temperature:68,temperature_unit:'°F'}),
-      'sensor.outdoor_temperature':state('Outside','68',{unit_of_measurement:'°F'})
+      'sensor.outdoor_temperature':state('Outdoor temperature','68',{unit_of_measurement:'°F'}),
+      'sensor.humidity':state('Living room humidity','48',{unit_of_measurement:'%'})
     },
     connection:{async subscribeMessage(callback) { callback({forecast}); return () => {}; }},
     async callWS(message) {
-      const now = new Date();
-      const day = new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate())).toISOString().slice(0,10);
+      const day = today.toISOString().slice(0,10);
       return {response:{mealplan: message.service_data.start_date === day
         ? [{mealplan_date:day,entry_type:'dinner',recipe:{name:dinner,slug:'lemon-chickpea-bowls'}}] : []}};
     },

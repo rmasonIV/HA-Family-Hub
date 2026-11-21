@@ -83,7 +83,7 @@ function normalizeMealie(value, calendars, warnings) {
 }
 
 function normalizeConfig(input, warnings = []) {
-  const config = isRecord(input) ? input : {};
+  const {title: _legacyTitle, ...config} = isRecord(input) ? input : {};
   const list = (key, validate, limit = Infinity) => {
     const values = config[key];
     if (values == null) return [];
@@ -260,8 +260,9 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .quick-control ha-icon{flex:none;--mdc-icon-size:24px}
 .current{position:absolute;top:var(--position);left:50%;width:9px;height:9px;transform:translate(-50%,-50%);border:1px solid #304459;border-radius:50%;background:white}
 .calendar-header,.period-header,.detail-header{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-.calendar-header h2,.period-header h3,.detail-header h3{margin:0}
-.calendar-header{margin-bottom:12px}
+.period-header h3,.detail-header h3{margin:0}
+.calendar-header{margin-bottom:8px}
+.view-toggle{display:flex;gap:4px;margin-inline-start:auto}
 .view-toggle [aria-pressed="true"],.month-day[aria-expanded="true"]{background:#dceafb}
 .period-header{margin-bottom:10px}.period-navigation{display:flex;gap:6px;flex-wrap:wrap}
 .month-content{display:grid;gap:12px}
@@ -343,11 +344,11 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
   background:color-mix(in srgb,var(--event-color,#4a90e2) 20%,var(--fh-surface));
   border-inline-start:3px solid var(--event-color,#4a90e2);
 }
-.calendar-legend {display:flex;flex-wrap:wrap;gap:6px 14px;padding:0;margin:0 0 12px;list-style:none;font-size:.85rem}
+.calendar-legend {display:flex;flex-wrap:wrap;gap:2px 6px;padding:0;margin:0;min-inline-size:0;list-style:none;font-size:.85rem}
 .calendar-legend[hidden] {display:none}
-.calendar-legend button {display:flex;align-items:center;gap:6px;border:1px solid transparent;border-radius:16px;padding:4px 8px;background:transparent;color:inherit;text-align:start}
+.calendar-legend button {display:flex;align-items:center;gap:6px;border:1px solid transparent;border-radius:16px;padding:4px 8px;min-height:36px;background:transparent;color:inherit;text-align:start;overflow-wrap:anywhere}
 .calendar-legend button[aria-pressed="true"]{border-color:var(--event-color);background:var(--fh-tint)}
-.calendar-legend button::before {content:'';width:10px;height:10px;border-radius:50%;background:var(--event-color)}
+.calendar-legend button::before {content:'';flex:none;width:10px;height:10px;border-radius:50%;background:var(--event-color)}
 @container (max-width:720px) {.widget-grid[data-count="3"]{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container (max-width:620px) {.action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container (max-width:480px) {.widget-grid[data-count]{grid-template-columns:minmax(0,1fr)}}
@@ -360,13 +361,13 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
 <div class="layout" id="layout">
 <section class="calendar" aria-label="Family calendar">
 <div class="calendar-header">
-  <h2>Family calendar</h2>
+  <ul class="calendar-legend" id="calendar-legend" aria-label="Filter by calendar"></ul>
   <div class="view-toggle" role="group" aria-label="Calendar view">
     <button class="action-button" id="week-view" type="button" aria-pressed="true">Week</button>
     <button class="action-button" id="month-view" type="button" aria-pressed="false">Month</button>
   </div>
 </div>
-<p class="muted" id="calendar-status" role="status"></p><ul class="calendar-legend" id="calendar-legend" aria-label="Filter by calendar"></ul><p id="weather-status" class="muted" role="status" hidden></p>
+<p class="muted" id="calendar-status" role="status"></p><p id="weather-status" class="muted" role="status" hidden></p>
 <div id="week">
   <div class="period-header">
     <h3 id="week-title" aria-live="polite"></h3>
@@ -970,7 +971,8 @@ function mount(root, host) {
 
 class FamilyHubLiveEditor extends HTMLElement {
   setConfig(config) {
-    this.config = config;
+    const {title: _legacyTitle, ...editorConfig} = config;
+    this.config = editorConfig;
     this.render();
   }
 

@@ -1,0 +1,10 @@
+{
+  "name": "family-hub-live-preview",
+  "private": true,
+  "scripts": {
+    "capture": "node capture.cjs"
+  },
+  "dependencies": {
+    "playwright": "1.57.0"
+  }
+}
