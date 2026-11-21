@@ -125,7 +125,7 @@ function widgetKey(entry) {
 }
 
 let cardHelpers;
-function loadCardHelpers() {
+function getCardHelpers() {
   cardHelpers ??= Promise.resolve().then(() => window.loadCardHelpers()).catch(error => {
     cardHelpers = undefined;
     throw error;
@@ -623,11 +623,12 @@ function mount(root, host) {
     for (const {key, entry, slot, status} of widgets) {
       const showError = () => {
         entry.failed = true;
+        status.dataset.failed = '';
         status.textContent = `Could not load ${entry.config.name || entry.config.title || entry.config.entity || entry.config.type}. Check the widget YAML and Home Assistant frontend.`;
         slot.replaceChildren(status);
       };
       if (entry.failed) {
-        if (slot.firstChild !== status || !status.textContent) showError();
+        if (!status.hasAttribute('data-failed')) showError();
       } else if (entry.card) {
         try {
           // Home Assistant sends a fresh hass object when entity state changes.
@@ -641,7 +642,7 @@ function mount(root, host) {
         }
       } else if (!entry.pending) {
         status.textContent = 'Loading widget…';
-        entry.pending = loadCardHelpers()
+        entry.pending = getCardHelpers()
           .then(helpers => helpers.createCardElement(JSON.parse(key)))
           .then(card => {
             if (!(card instanceof HTMLElement) || card.localName === 'hui-error-card') throw new Error('Invalid widget');
