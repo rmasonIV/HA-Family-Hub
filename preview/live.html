@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Hub Live preview</title>
+<style>
+  body{margin:0;background:#edf2f7;color:#24334a;font:15px system-ui,sans-serif}
+  body.dark{background:#141a23;color:#edf2fa;--primary-text-color:#edf2fa;--secondary-text-color:#b6c4d7;--ha-card-background:#202938;--divider-color:#42516a;--primary-color:#91bbf3}
+  header{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;padding:12px 16px}
+  header h1{font-size:1.1rem;margin:0}header span{flex:1}
+  header button{border:1px solid #8093ab;border-radius:6px;background:transparent;color:inherit;padding:8px;font:inherit;cursor:pointer}
+  family-hub-live{display:block}
+</style>
+</head>
+<body>
+<header>
+  <h1>Family Hub Live preview</h1>
+  <span>Sample calendar, device, and weather data</span>
+  <button type="button" id="theme" aria-pressed="false">Dark theme</button>
+  <button type="button" id="startup" aria-pressed="false">Start collapsed</button>
+</header>
+<family-hub-live></family-hub-live>
+<script src="./family-hub-live.js"></script>
+<script>
+  if (!customElements.get('ha-icon')) {
+    customElements.define('ha-icon', class extends HTMLElement {
+      set icon(value) { this.textContent = {'mdi:lamps':'💡','mdi:garage':'🚙'}[value] ?? '◆'; }
+    });
+  }
+  const card = document.querySelector('family-hub-live');
+  const state = (name, value, attributes = {}) => ({state:value, attributes:{friendly_name:name,...attributes}});
+  const days = [0,1,2,3,4,5,6].map(index => {
+    const date = new Date();
+    date.setDate(date.getDate() - date.getDay() + index);
+    date.setHours(12,0,0,0);
+    return date;
+  });
+  const forecast = days.map((date,index) => ({
+    datetime:date.toISOString(), condition:['sunny','partlycloudy','rainy'][index%3],
+    temperature:74+index, templow:55+index, precipitation_probability:index%3 === 2 ? 75 : 10
+  }));
+  const event = (index,hour,summary,location) => {
+    const start = new Date(days[index]); start.setHours(hour);
+    const end = new Date(start); end.setHours(hour+1);
+    return {summary,location,start:{dateTime:start.toISOString()},end:{dateTime:end.toISOString()}};
+  };
+  const calendars = {
+    'calendar.family':[event(0,18,'Dinner with friends','Home'),event(2,9,'Dentist appointment','Oak Dental'),event(5,11,'Family outing','Community park')],
+    'calendar.school':[event(1,8,'Library day','School library'),event(3,17,'Team practice','Field 2'),event(4,19,'Movie night','School gym')]
+  };
+  const config = {
+    type:'custom:family-hub-live',default_view:'week',week_start:'sunday',weather_entity:'weather.home',
+    calendars:Object.keys(calendars),actions:['light.living_room','cover.garage'],
+    widgets:['sensor.outdoor_temperature'],action_appearance:{'light.living_room':{icon:'mdi:lamps',on_color:'#d48b22',off_color:'#738da8'}}
+  };
+  const hass = {
+    states:{
+      'calendar.family':state('Family','off'),
+      'calendar.school':state('School','off'),
+      'light.living_room':state('Living room light','off'),
+      'cover.garage':state('Garage','closed'),
+      'weather.home':state('Home forecast','sunny',{temperature:68,temperature_unit:'°F'}),
+      'sensor.outdoor_temperature':state('Outside','68',{unit_of_measurement:'°F'})
+    },
+    connection:{async subscribeMessage(callback) { callback({forecast}); return () => {}; }},
+    async callApi(method,path) {
+      const [resource,query] = path.split('?');
+      const id = decodeURIComponent(resource.split('/')[1]);
+      const bounds = new URLSearchParams(query);
+      return (calendars[id] ?? []).filter(item =>
+        new Date(item.start.dateTime) < new Date(bounds.get('end')) &&
+        new Date(item.end.dateTime) > new Date(bounds.get('start')));
+    },
+    async callService(domain,service,{entity_id:id}) {
+      const entity = hass.states[id];
+      if (service === 'toggle') entity.state = entity.state === 'on' ? 'off' : 'on';
+      if (service === 'open_cover') entity.state = 'open';
+      card.hass = hass;
+    }
+  };
+  card.setConfig(config);
+  card.hass = hass;
+  document.querySelector('#theme').onclick = event => {
+    event.currentTarget.setAttribute('aria-pressed', String(document.body.classList.toggle('dark')));
+  };
+  document.querySelector('#startup').onclick = event => {
+    const collapsed = config.ribbon_default !== 'collapsed';
+    config.ribbon_default = collapsed ? 'collapsed' : 'expanded';
+    event.currentTarget.setAttribute('aria-pressed', String(collapsed));
+    card.setConfig(config);
+  };
+</script>
+</body>
+</html>

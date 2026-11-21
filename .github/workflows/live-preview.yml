@@ -1,0 +1,29 @@
+name: Family Hub Live PR preview
+
+on:
+  pull_request:
+    paths:
+      - 'custom_components/family_hub/card/family-hub-live.js'
+      - 'preview/live.html'
+      - '.github/workflows/live-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package the current card and sample data
+        run: |
+          mkdir -p preview-build
+          cp preview/live.html preview-build/index.html
+          cp custom_components/family_hub/card/family-hub-live.js preview-build/
+          node --check preview-build/family-hub-live.js
+          echo 'Download **family-hub-live-preview**, unzip it, and open `index.html` in your browser.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: family-hub-live-preview
+          path: preview-build/
+          if-no-files-found: error

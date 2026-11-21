@@ -1,5 +1,33 @@
 const CARD = 'family-hub-live';
 const MAX_ITEMS = 4;
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const weekOffset = (date, firstDay) => (date.getDay() - firstDay + DAYS.length) % DAYS.length;
+const WEATHER_ICONS = {
+  sunny:'☀️', clear_night:'🌙', 'clear-night':'🌙', partlycloudy:'🌤️', cloudy:'☁️',
+  rainy:'🌧️', pouring:'🌧️', lightning:'⛈️', 'lightning-rainy':'⛈️', snowy:'❄️',
+  'snowy-rainy':'🌨️', hail:'🌨️', fog:'🌫️', windy:'💨', 'windy-variant':'💨'
+};
+const temperaturePosition = (current, high, low) =>
+  Number.isFinite(current) && Number.isFinite(high) && Number.isFinite(low) && high >= low
+    ? (high === low ? 50 : Math.min(100, Math.max(0, 100 * (high-current)/(high-low))))
+    : null;
+const ACTION_ICONS = {
+  light:'mdi:lightbulb', switch:'mdi:toggle-switch', input_boolean:'mdi:toggle-switch',
+  script:'mdi:play-circle-outline', button:'mdi:gesture-tap-button',
+  input_button:'mdi:gesture-tap-button', cover:'mdi:garage'
+};
+const ACTION_ICON_CHOICES = [
+  'mdi:lightbulb', 'mdi:lightbulb-on', 'mdi:lamps', 'mdi:floor-lamp', 'mdi:led-strip-variant',
+  'mdi:toggle-switch', 'mdi:garage', 'mdi:door', 'mdi:fan', 'mdi:power',
+  'mdi:play-circle-outline', 'mdi:gesture-tap-button'
+];
+const isHexColor = color => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color);
+const isIcon = icon => typeof icon === 'string' && /^mdi:[a-z0-9-]+$/.test(icon);
+const CALENDAR_COLORS = ['#4a90e2','#2ba675','#b47adc','#e68d38','#d96389','#28a8af','#8b9b36','#777fea'];
+const calendarColor = (config, id, index) => {
+  const color = config.calendar_colors?.[id];
+  return isHexColor(color) ? color : CALENDAR_COLORS[index % CALENDAR_COLORS.length];
+};
 const ACTIONS = {
   light: 'toggle', switch: 'toggle', input_boolean: 'toggle',
   script: 'turn_on', button: 'press', input_button: 'press', cover: 'open_cover'
@@ -19,17 +47,15 @@ const when = (start, end, date, allDay) => {
 
 const markup = `<style>
 :host{font-family:system-ui,sans-serif;color:#223047;background:#f1f4f8}
-*{box-sizing:border-box}main{max-width:1500px;margin:auto;padding:20px}
+*{box-sizing:border-box}main{width:100%;padding:clamp(6px,1vw,14px);container-type:inline-size}
 header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
 small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-radius:9px;margin:14px 0}
 .layout{display:grid;gap:14px;margin-top:16px}
 .quick-actions{background:white;border:1px solid #dce2e9;border-radius:12px}
-.quick-actions.pinned{position:sticky;top:var(--header-height,56px);z-index:2}
 .quick-header{display:flex;align-items:center;gap:8px;padding:0 10px}
 .quick-header button{min-height:44px;border:0;background:transparent;color:inherit}
 #quick-toggle{flex:1;text-align:left;font-weight:600}
-#quick-pin[aria-pressed="true"]{background:#dceafb}
-.action-grid,.widget-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,175px),1fr));gap:12px}
+.action-grid,.widget-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .action-grid{padding:12px;border-top:1px solid #dce2e9}
 .quick-control{display:flex;align-items:center;gap:10px;min-height:64px;padding:10px;border:1px solid #cbd5e1;border-radius:9px;background:#f4f7fb;text-align:left;color:inherit}
 .quick-control[aria-pressed="true"]{background:#fff1bf}
@@ -46,7 +72,7 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .settings select{max-width:100%;padding:8px;border-radius:6px}
 .settings .helper{font-size:.85rem;color:#627083}
 
-.calendar,.side{background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px #0001}
+.calendar,.side{background:white;border-radius:12px;padding:clamp(8px,1cqi,14px);box-shadow:0 1px 4px #0001}
 .days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}
 .day{border:1px solid #dce2e9;border-radius:9px;min-height:180px;padding:8px;overflow-wrap:anywhere}
 .day,.month-day{box-shadow:0 2px 4px #22304714,0 1px 1px #2230470a}
@@ -59,7 +85,10 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .day-body.events-only{grid-template-columns:minmax(0,1fr)}
 .weather{display:grid;justify-items:center;gap:3px;font-size:.75rem;font-variant-numeric:tabular-nums}
 .weather-button{border:0;background:transparent;padding:0;width:44px;height:44px;font-size:1.25rem}
-.range{position:relative;width:5px;height:42px;border-radius:4px;background:linear-gradient(#fb9958,#79b7ee)}
+.range{position:relative;width:6px;height:42px;border-radius:4px;background:linear-gradient(to top,#3b82f6,#ef4444)}
+.range.wide-range{background:linear-gradient(to top,#3b82f6,#facc15,#ef4444)}
+.current[hidden]{display:none}
+.quick-control ha-icon{flex:none;--mdc-icon-size:24px}
 .current{position:absolute;top:var(--position);left:50%;width:9px;height:9px;transform:translate(-50%,-50%);border:1px solid #304459;border-radius:50%;background:white}
 .calendar-header,.month-top,.detail-header{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .calendar-header h2,.month-top h3,.detail-header h3{margin:0}
@@ -71,7 +100,7 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .weekday{text-align:center;font-size:.75rem}
 .month-day{display:grid;align-content:start;gap:3px;min-width:0;min-height:66px;text-align:left;border:1px solid #dce2e9;border-radius:7px;background:white;padding:5px;color:inherit}
-.month-content:not(.has-details) .month-day{min-height:clamp(86px,11vh,125px)}
+.month-content:not(.has-details) .month-day{min-height:clamp(64px,9dvh,112px)}
 .day-details{display:flex;flex-direction:column;min-height:0;contain:size}
 .day-details[hidden]{display:none}
 #day-events{overflow-y:auto;overscroll-behavior:contain}
@@ -85,7 +114,6 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .day-event .description-full{margin-inline-start:1.2em}
 .description-preview{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .day-event details[open] .description-preview{display:none}
-#quick-pin{min-width:88px;border:1px solid #cbd5e1;border-radius:8px;min-height:38px}
 .settings-list{list-style:none;padding:0}
 .settings-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
 .widget-grid.wide{grid-template-columns:minmax(0,1fr)}
@@ -95,25 +123,58 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .detail-header h3{font-size:1rem}
 dialog{width:min(380px,calc(100% - 32px));border:1px solid #cbd5e1;border-radius:12px;padding:22px;color:inherit}
 dialog::backdrop{background:#22304770}
-@media(max-width:800px){
+@container (max-width:760px){
   .month-content.has-details{grid-template-columns:minmax(0,1fr)}
   .day-details{contain:none;max-height:360px}
-  .month-content:not(.has-details) .month-day{min-height:76px}
+  .month-grid{gap:3px}
+  .month-day,.month-content:not(.has-details) .month-day{min-height:52px;padding:4px}
   .month-day .event{font-size:0;min-height:4px;padding:0}
+  .month-day small{font-size:.65rem}
 }
 .event{display:block;background:#dceafb;border-radius:6px;padding:7px;margin:6px 0;font-size:.85rem}
 .event.alt{background:#e8f4dc}.event.third{background:#fae8dd}
 .side h3{margin-top:0}.device{padding:12px;border:1px solid #e2e6eb;border-radius:9px;margin:10px 0}
 button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;background:#e4ebf6;padding:8px 12px}
-@media(max-width:1100px){.days{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(max-width:850px){.days{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:440px){main{padding:10px}.calendar{padding:10px}.days{grid-template-columns:minmax(0,1fr)}.day{min-height:120px}}
+@container (max-width:1050px){.days{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@container (max-width:680px){.days{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:460px){.days{grid-template-columns:minmax(0,1fr)}.day{min-height:120px}}
 
 #calendar-status:empty{display:none} button:disabled{cursor:default;opacity:.55}
+
+:host {
+  display:block;
+  color:var(--primary-text-color,#223047);
+  background:transparent;
+  --fh-surface:var(--ha-card-background,var(--card-background-color,#fff));
+  --fh-border:var(--divider-color,#dce2e9);
+  --fh-tint:color-mix(in srgb,var(--primary-color,#4a90e2) 18%,var(--fh-surface));
+}
+.quick-actions,.calendar,.side,.month-day,.action-button,dialog {
+  background:var(--fh-surface);color:inherit;
+}
+.quick-actions,.month-day,.day,.day-details,.device,.quick-control,.action-button,.action-grid,dialog {
+  border-color:var(--fh-border);
+}
+small,.muted,.day-event summary .description-preview {color:var(--secondary-text-color,#627083)}
+.quick-control {background:color-mix(in srgb,currentColor 5%,var(--fh-surface));overflow-wrap:anywhere}
+.quick-control[aria-pressed="true"],.view-toggle [aria-pressed="true"],
+.month-day[aria-expanded="true"],.day-heading:hover,.day-heading:focus-visible {background:var(--fh-tint)}
+.quick-control[data-custom-fill] {
+  background:color-mix(in srgb,var(--action-fill) 28%,var(--fh-surface));
+}
+.month-day[aria-expanded="true"] {border-color:var(--primary-color,#4a90e2)}
+.event,.event.alt,.event.third {
+  background:color-mix(in srgb,var(--event-color,#4a90e2) 20%,var(--fh-surface));
+  border-inline-start:3px solid var(--event-color,#4a90e2);
+}
+.calendar-legend {display:flex;flex-wrap:wrap;gap:6px 14px;padding:0;margin:0 0 12px;list-style:none;font-size:.85rem}
+.calendar-legend[hidden] {display:none}
+.calendar-legend li {display:flex;align-items:center;gap:6px}
+.calendar-legend li::before {content:'';width:10px;height:10px;border-radius:50%;background:var(--event-color)}
+@container (max-width:620px) {.action-grid,.widget-grid {grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style><main><section class="quick-actions" aria-label="Quick Actions" id="quick-actions">
   <div class="quick-header">
     <button type="button" id="quick-toggle" aria-controls="quick-controls" aria-expanded="true">Quick Actions</button>
-    <button type="button" id="quick-pin" aria-label="Pin Quick Actions" aria-pressed="false">Pin</button>
   </div>
   <div class="action-grid" id="quick-controls"></div></section>
 <div class="layout" id="layout">
@@ -125,7 +186,7 @@ button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;bac
     <button class="action-button" id="month-view" type="button" aria-pressed="false">Month</button>
   </div>
 </div>
-<p class="muted" id="calendar-status" role="status"></p><div id="week"><div class="days" id="week-days"></div></div>
+<p class="muted" id="calendar-status" role="status"></p><ul class="calendar-legend" id="calendar-legend" aria-label="Calendar legend"></ul><div id="week"><p id="weather-status" class="muted" role="status" hidden></p><div class="days" id="week-days"></div></div>
 <div id="month" hidden>
   <div class="month-top">
     <h3 id="month-title"></h3>
@@ -157,6 +218,13 @@ button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;bac
   </div>
   <div id="week-day-events"></div>
 </dialog>
+<dialog id="forecast-details" aria-labelledby="forecast-title">
+  <div class="detail-header">
+    <h2 id="forecast-title"></h2>
+    <form method="dialog"><button class="action-button" aria-label="Close forecast">×</button></form>
+  </div>
+  <p id="forecast-summary"></p>
+</dialog>
 </main>`;
 
 function mount(root, host) {
@@ -164,42 +232,119 @@ function mount(root, host) {
   const weekDays = document.getElementById('week-days');
   const monthGrid = document.getElementById('month-grid');
   const dayDetails = document.getElementById('day-details');
-  const weekdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const firstDay = host.config.week_start === 'sunday' ? 0 : 1;
+  const weekdays = [...DAYS.slice(firstDay), ...DAYS.slice(0, firstDay)];
   const today = new Date();
-  const monday = addDays(today, -((today.getDay()+6)%7));
-  const weekDates = weekdays.map((_, index) => addDays(monday, index));
+  const weekStart = addDays(today, -weekOffset(today, firstDay));
+  const weekDates = weekdays.map((_, index) => addDays(weekStart, index));
   let monthView = host.config.default_view === 'month';
   let month = new Date(today.getFullYear(), today.getMonth(), 1);
   let selectedDay = null;
   let calendarEvents = [];
+  const forecasts = new Map();
+  let subscription;
+  const weatherStatus = document.getElementById('weather-status');
+
+  function redrawWeek() {
+    if (monthView) return;
+    const active = root.activeElement;
+    const forecastIndex = active?.dataset.forecast;
+    const dayIndex = active?.dataset.weekDay;
+    renderCalendar();
+    if (forecastIndex !== undefined) weekDays.querySelector(`[data-forecast="${forecastIndex}"]`)?.focus();
+    if (dayIndex !== undefined) weekDays.querySelector(`[data-week-day="${dayIndex}"]`)?.focus();
+  }
+
+  function stopWeather() {
+    const previous = subscription;
+    subscription = undefined;
+    forecasts.clear();
+    if (previous?.unsubscribe) Promise.resolve().then(previous.unsubscribe).catch(() => {});
+  }
+
+  function startWeather() {
+    const id = host.config.weather_entity;
+    const connection = host.hass?.connection;
+    if (!host.isConnected || !id || !connection || subscription?.connection === connection) return;
+    stopWeather();
+    const current = {connection};
+    subscription = current;
+    weatherStatus.textContent = 'Loading daily forecast…';
+    weatherStatus.hidden = false;
+    Promise.resolve().then(() => connection.subscribeMessage(message => {
+      if (subscription !== current) return;
+      forecasts.clear();
+      for (const forecast of message.forecast ?? []) {
+        const date = new Date(forecast.datetime);
+        if (Number.isFinite(date.getTime())) forecasts.set(date.toDateString(), forecast);
+      }
+      weatherStatus.textContent = forecasts.size ? '' : 'Daily forecast unavailable.';
+      weatherStatus.hidden = Boolean(forecasts.size);
+      redrawWeek();
+    }, {type:'weather/subscribe_forecast', entity_id:id, forecast_type:'daily'}))
+      .then(unsubscribe => {
+        if (subscription === current) current.unsubscribe = unsubscribe;
+        else return unsubscribe();
+      })
+      .catch(() => {
+        if (subscription !== current) return;
+        weatherStatus.textContent = 'Daily forecast unavailable for the selected weather entity.';
+        weatherStatus.hidden = false;
+        redrawWeek();
+      });
+  }
+
+  function forecastMarkup(date, index, forecast) {
+    const high = forecast.temperature;
+    const low = forecast.templow;
+    const today = date.toDateString() === new Date().toDateString();
+    const current = host.hass?.states[host.config.weather_entity]?.attributes.temperature;
+    const position = today ? temperaturePosition(current, high, low) : null;
+    const unit = host.hass?.states[host.config.weather_entity]?.attributes.temperature_unit
+      ?? host.hass?.config?.unit_system?.temperature;
+    const wide = high - low >= (unit === '°F' ? 18 : 10);
+    const icon = WEATHER_ICONS[forecast.condition] ?? '🌡️';
+    return `<div class="weather">
+      <button class="weather-button" type="button" data-forecast="${index}" aria-haspopup="dialog"
+        aria-label="Forecast for ${weekdays[index]} ${date.getDate()}">${icon}</button>
+      ${Number.isFinite(high) ? `<span aria-label="High ${high} degrees">${high}°</span>` : ''}
+      ${Number.isFinite(high) && Number.isFinite(low) ? `<span class="range ${wide ? 'wide-range' : ''}" aria-hidden="true">
+        ${today ? `<span class="current" data-high="${high}" data-low="${low}" ${position === null ? 'hidden' : ''} style="--position:${position ?? 50}%"></span>` : ''}
+      </span>` : ''}
+      ${Number.isFinite(low) ? `<span aria-label="Low ${low} degrees">${low}°</span>` : ''}
+    </div>`;
+  }
   let request = 0;
-  let expanded = true;
-  let pinned = false;
+  let expanded = host.config.ribbon_default !== 'collapsed';
   const status = document.getElementById('status');
   const report = message => { status.textContent = message; status.hidden = !message; };
   const calendarStatus = document.getElementById('calendar-status');
-  const quick = document.getElementById('quick-actions');
   const controls = document.getElementById('quick-controls');
-  const pin = document.getElementById('quick-pin');
   const toggle = document.getElementById('quick-toggle');
 
   function updateRibbon() {
     controls.hidden = !expanded;
-    quick.classList.toggle('pinned', pinned);
-    pin.setAttribute('aria-pressed', String(pinned));
-    pin.setAttribute('aria-label', pinned ? 'Unpin Quick Actions' : 'Pin Quick Actions');
-    pin.textContent = pinned ? '✓ Pinned' : 'Pin';
     toggle.textContent = expanded ? '▾ Quick Actions' : '▸ Quick Actions';
     toggle.setAttribute('aria-expanded', String(expanded));
   }
-  pin.onclick = () => { pinned = !pinned; if (pinned) expanded = true; updateRibbon(); };
-  toggle.onclick = () => { expanded = !expanded; if (!expanded) pinned = false; updateRibbon(); };
+  toggle.onclick = () => { expanded = !expanded; updateRibbon(); };
   updateRibbon();
+
+  const legend = document.getElementById('calendar-legend');
+  const colors = new Map(host.config.calendars.map((id, index) => [id, calendarColor(host.config, id, index)]));
+  const legendItems = Array.from(colors, ([id, color]) => {
+    const item = window.document.createElement('li');
+    item.style.setProperty('--event-color', color);
+    item.textContent = id;
+    legend.append(item);
+    return [id, item];
+  });
+  legend.hidden = !legendItems.length;
 
   function eventsOn(date) {
     const next = addDays(date, 1);
     return calendarEvents.filter(event => event.start < next && event.end > date)
-      .map(event => [event.summary, '', {time:when(event.start, event.end, date, event.allDay),
+      .map(event => [event.summary, colors.get(event.calendarId), {time:when(event.start, event.end, date, event.allDay),
         location:event.location, description:event.description}]);
   }
 
@@ -212,17 +357,17 @@ function mount(root, host) {
       calendarStatus.textContent = 'Choose calendars in the card editor.';
       return;
     }
-    const weekEnd = addDays(monday, 7);
+    const weekEnd = addDays(weekStart, 7);
     const monthEnd = new Date(month.getFullYear(), month.getMonth()+1, 1);
-    const start = new Date(Math.min(monday, month));
+    const start = new Date(Math.min(weekStart, month));
     const end = new Date(Math.max(weekEnd, monthEnd));
     // Fetch each visible range independently to avoid pulling events between distant months.
-    const ranges = month < weekEnd && monthEnd > monday ? [[start,end]] : [[monday,weekEnd],[month,monthEnd]];
+    const ranges = month < weekEnd && monthEnd > weekStart ? [[start,end]] : [[weekStart,weekEnd],[month,monthEnd]];
     calendarStatus.textContent = 'Loading events…';
     const results = await Promise.allSettled(config.calendars.flatMap(id => ranges.map(async ([from,to]) => {
       const query = new URLSearchParams({start:from.toISOString(), end:to.toISOString()});
       const events = await hass.callApi('GET', 'calendars/'+encodeURIComponent(id)+'?'+query);
-      return events.filter(event => event.start && event.end).map(event => ({...event,
+      return events.filter(event => event.start && event.end).map(event => ({...event, calendarId:id,
         start:endpoint(event.start), end:endpoint(event.end), allDay:Boolean(event.start.date)}));
     })));
     if (current !== request) return;
@@ -242,8 +387,12 @@ function mount(root, host) {
     const domain = domainOf(id);
     button.type = 'button';
     button.className = 'quick-control';
+    const icon = window.document.createElement('ha-icon');
+    icon.setAttribute('aria-hidden', 'true');
+    const appearance = host.config.action_appearance?.[id] ?? {};
+    icon.icon = isIcon(appearance.icon) ? appearance.icon : ACTION_ICONS[domain];
     label.append(window.document.createTextNode(id), state);
-    button.append(label);
+    button.append(icon, label);
     controls.append(button);
     let pending = false;
     button.onclick = async () => {
@@ -256,7 +405,7 @@ function mount(root, host) {
       catch { report('Could not run '+label.firstChild.textContent+'.'); }
       finally { pending = false; updateEntities(); }
     };
-    return {id, button, label, state, busy:() => pending};
+    return {id, button, label, state, appearance, busy:() => pending};
   });
   if (!actionButtons.length) controls.textContent = 'Add entities in the card editor.';
   const widgetPanel = document.getElementById('widget-panel');
@@ -275,14 +424,27 @@ function mount(root, host) {
   function updateEntities() {
     const hass = host.hass;
     if (!hass) return;
-    for (const {id,button,label,state,busy} of actionButtons) {
+    for (const [id, item] of legendItems) {
+      item.textContent = hass.states[id]?.attributes.friendly_name || id;
+    }
+    for (const marker of root.querySelectorAll('.current[data-high]')) {
+      const current = hass.states[host.config.weather_entity]?.attributes.temperature;
+      const position = temperaturePosition(current, Number(marker.dataset.high), Number(marker.dataset.low));
+      marker.hidden = position === null;
+      if (position !== null) marker.style.setProperty('--position', position+'%');
+    }
+    for (const {id,button,label,state,appearance,busy} of actionButtons) {
       const entity = hass.states[id];
       label.firstChild.textContent = entity?.attributes.friendly_name || id;
       state.textContent = entity?.state ?? 'Unavailable';
       const domain = domainOf(id);
       button.disabled = busy() || !entity || ['unavailable','unknown'].includes(entity.state) ||
         (domain === 'cover' && entity.state !== 'closed');
-      if (ACTIONS[domain] === 'toggle') button.setAttribute('aria-pressed', String(entity?.state === 'on'));
+      const on = entity?.state === 'on';
+      if (ACTIONS[domain] === 'toggle') button.setAttribute('aria-pressed', String(on));
+      const fill = on ? appearance.on_color : appearance.off_color;
+      button.toggleAttribute('data-custom-fill', isHexColor(fill));
+      if (isHexColor(fill)) button.style.setProperty('--action-fill', fill);
     }
     for (const {id,card,value} of widgets) {
       const entity = hass.states[id];
@@ -293,11 +455,11 @@ function mount(root, host) {
     }
   }
   function eventCards(events, tag = 'div') {
-    return events.map(([title, color = '']) => `<${tag} class="event ${color}">${escapeText(title)}</${tag}>`).join('');
+    return events.map(([title, color]) => `<${tag} class="event" style="--event-color:${color}">${escapeText(title)}</${tag}>`).join('');
   }
 
   function dayEventCards(events) {
-    return events.map(([title, color = '', details = {}]) => `<article class="event day-event ${color}">
+    return events.map(([title, color, details = {}]) => `<article class="event day-event" style="--event-color:${color}">
       <strong>${escapeText(title)}</strong>
       ${details.time ? `<p class="event-meta"><span class="event-icon" role="img" aria-label="Time">🕒</span><span>${escapeText(details.time)}</span></p>` : ''}
       ${details.location ? `<p class="event-meta"><span class="event-icon" role="img" aria-label="Location">📍</span><span>${escapeText(details.location)}</span></p>` : ''}
@@ -317,18 +479,22 @@ function mount(root, host) {
     document.getElementById('week-view').setAttribute('aria-pressed', String(!monthView));
     document.getElementById('month-view').setAttribute('aria-pressed', String(monthView));
     if (!monthView) {
-      weekDays.innerHTML = weekDates.map((date, index) => `<article class="day">
+      weekDays.innerHTML = weekDates.map((date, index) => {
+        const forecast = forecasts.get(date.toDateString());
+        return `<article class="day">
         <button type="button" class="day-heading" data-week-day="${index}" aria-haspopup="dialog" aria-label="View events for ${weekdays[index]} ${date.getDate()}">${weekdays[index]} ${date.getDate()}</button>
-        <div class="day-body events-only">
+        <div class="day-body ${forecast ? '' : 'events-only'}">
+          ${forecast ? forecastMarkup(date, index, forecast) : ''}
           <div class="events">${eventCards(eventsOn(date))}</div>
         </div>
-      </article>`).join('');
+      </article>`;
+      }).join('');
       return;
     }
 
     const year = month.getFullYear();
     const monthNumber = month.getMonth();
-    const offset = (month.getDay()+6)%7;
+    const offset = weekOffset(month, firstDay);
     const dayCount = new Date(year, monthNumber+1, 0).getDate();
     const getDayEvents = day => eventsOn(new Date(year, monthNumber, day));
     document.getElementById('month-title').textContent = month.toLocaleDateString('en-US', {month:'long', year:'numeric'});
@@ -358,6 +524,28 @@ function mount(root, host) {
 
 
   weekDays.addEventListener('click', event => {
+    const weatherButton = event.target.closest('[data-forecast]');
+    if (weatherButton) {
+      const date = weekDates[Number(weatherButton.dataset.forecast)];
+      const forecast = forecasts.get(date.toDateString());
+      if (!forecast) return;
+      const entity = host.hass?.states[host.config.weather_entity];
+      const unit = entity?.attributes.temperature_unit ?? host.hass?.config?.unit_system?.temperature ?? '°';
+      const temperature = value => Number.isFinite(value) ? `${value} ${unit}` : null;
+      const high = temperature(forecast.temperature);
+      const low = temperature(forecast.templow);
+      const today = date.toDateString() === new Date().toDateString();
+      const current = today ? temperature(entity?.attributes.temperature) : null;
+      document.getElementById('forecast-title').textContent = date.toLocaleDateString(undefined,
+        {weekday:'long', month:'short', day:'numeric'});
+      document.getElementById('forecast-summary').textContent = [
+        forecast.condition?.replaceAll('-', ' '), high && `High ${high}`,
+        low && `Low ${low}`, current && `Current ${current}`,
+        Number.isFinite(forecast.precipitation_probability) && `Rain chance ${forecast.precipitation_probability}%`
+      ].filter(Boolean).join(' · ') || 'Forecast unavailable';
+      document.getElementById('forecast-details').showModal();
+      return;
+    }
     const dayButton = event.target.closest('[data-week-day]');
     if (dayButton) {
       const index = Number(dayButton.dataset.weekDay);
@@ -384,7 +572,11 @@ function mount(root, host) {
     const day = Number(button.dataset.day);
     selectedDay = selectedDay === day ? null : day;
     renderCalendar();
-    monthGrid.querySelector(`[data-day="${day}"]`).focus();
+    monthGrid.querySelector(`[data-day="${day}"]`).focus({preventScroll:true});
+    if (selectedDay !== null &&
+        dayDetails.getBoundingClientRect().top > monthGrid.getBoundingClientRect().top) {
+      dayDetails.scrollIntoView({block:'nearest'});
+    }
   });
   document.getElementById('close-day').addEventListener('click', () => {
     const day = selectedDay;
@@ -400,7 +592,7 @@ function mount(root, host) {
       loadCalendar();
     });
   }
-  return {loadCalendar, updateEntities};
+  return {loadCalendar, updateEntities, startWeather, stopWeather};
 }
 
 class FamilyHubLiveEditor extends HTMLElement {
@@ -441,8 +633,59 @@ class FamilyHubLiveEditor extends HTMLElement {
         remove.textContent = 'Remove';
         remove.setAttribute('aria-label', 'Remove '+id);
         remove.onclick = () => save(key, selected.filter(item => item !== id));
-        row.append(id+' ',remove);
+        const name = this._hass.states[id]?.attributes.friendly_name || id;
+        row.append(name+' ',remove);
+        if (key === 'calendars') {
+          const picker = document.createElement('input');
+          picker.type = 'color';
+          picker.value = calendarColor(this.config, id, selected.indexOf(id));
+          picker.setAttribute('aria-label', 'Calendar color for '+name);
+          picker.onchange = () => save('calendar_colors', {...this.config.calendar_colors,[id]:picker.value});
+          row.append(' ',picker);
+        }
         section.append(row);
+        if (key === 'actions') {
+          const appearance = this.config.action_appearance?.[id] ?? {};
+          const saveAppearance = (property, value) => save('action_appearance', {
+            ...this.config.action_appearance, [id]:{...appearance,[property]:value}
+          });
+          const fields = document.createElement('div');
+          const iconLabel = document.createElement('label');
+          const iconInput = document.createElement('input');
+          const suggestions = document.createElement('datalist');
+          suggestions.id = 'fh-icons-'+id.replace('.', '-');
+          for (const icon of ACTION_ICON_CHOICES) suggestions.append(new Option(icon, icon));
+          iconInput.setAttribute('list', suggestions.id);
+          iconInput.placeholder = ACTION_ICONS[domainOf(id)];
+          iconInput.value = appearance.icon ?? '';
+          iconInput.onchange = () => {
+            const value = iconInput.value.trim();
+            iconInput.setCustomValidity(value && !isIcon(value) ? 'Use an icon name such as mdi:lightbulb.' : '');
+            if (iconInput.reportValidity()) saveAppearance('icon', value);
+          };
+          iconLabel.append('Icon ',iconInput);
+          fields.append(iconLabel,suggestions);
+          const colorFields = Object.hasOwn(ACTIONS, domainOf(id)) && ACTIONS[domainOf(id)] === 'toggle'
+            ? [['off_color','Off fill'],['on_color','On fill']] : [['off_color','Button fill']];
+          for (const [property,title] of colorFields) {
+            const label = document.createElement('label');
+            const picker = document.createElement('input');
+            picker.type = 'color';
+            picker.value = isHexColor(appearance[property]) ? appearance[property] : '#4a90e2';
+            picker.onchange = () => saveAppearance(property,picker.value);
+            label.append(title+' ',picker);
+            fields.append(label);
+            if (isHexColor(appearance[property])) {
+              const reset = document.createElement('button');
+              reset.type = 'button';
+              reset.textContent = 'Use theme';
+              reset.setAttribute('aria-label', 'Use theme for '+title.toLowerCase()+' on '+name);
+              reset.onclick = () => saveAppearance(property,'');
+              fields.append(reset);
+            }
+          }
+          section.append(fields);
+        }
       }
       const picker = document.createElement('select');
       picker.setAttribute('aria-label', 'Choose '+title.toLowerCase()+' entity');
@@ -463,9 +706,28 @@ class FamilyHubLiveEditor extends HTMLElement {
       section.append(picker,add);
       this.append(section);
     }
+    const weatherLabel = document.createElement('label');
+    const weatherPicker = document.createElement('select');
+    weatherPicker.add(new Option('None', ''));
+    const weatherEntities = Object.keys(this._hass.states).filter(id => domainOf(id) === 'weather').sort();
+    const selectedWeather = this.config.weather_entity;
+    if (selectedWeather && !weatherEntities.includes(selectedWeather)) weatherEntities.push(selectedWeather);
+    for (const id of weatherEntities) {
+      weatherPicker.add(new Option(this._hass.states[id]?.attributes.friendly_name || id, id));
+    }
+    weatherPicker.value = selectedWeather ?? '';
+    weatherPicker.onchange = () => save('weather_entity', weatherPicker.value);
+    weatherLabel.append('Week weather ', weatherPicker);
+    this.append(weatherLabel);
+
+    const defaults = document.createElement('fieldset');
+    const defaultsHeading = document.createElement('legend');
+    defaultsHeading.textContent = 'Startup defaults';
+    defaults.append(defaultsHeading);
     for (const [key, title, options] of [
-      ['default_view','Default calendar view',{week:'Week',month:'Month'}],
-      ['widget_layout','Widget layout',{grid:'Side by side',wide:'Full-width stack'}]
+      ['default_view','Calendar opens in',{week:'Week',month:'Month'}],
+      ['week_start','First day of week',{monday:'Monday',sunday:'Sunday'}],
+      ['ribbon_default','Quick Actions opens',{expanded:'Expanded',collapsed:'Collapsed'}]
     ]) {
       const row = document.createElement('p');
       const label = document.createElement('label');
@@ -475,8 +737,18 @@ class FamilyHubLiveEditor extends HTMLElement {
       picker.onchange = () => save(key,picker.value);
       label.append(title+' ',picker);
       row.append(label);
-      this.append(row);
+      defaults.append(row);
     }
+    this.append(defaults);
+
+    const widgetLabel = document.createElement('label');
+    const widgetPicker = document.createElement('select');
+    widgetPicker.add(new Option('Side by side', 'grid'));
+    widgetPicker.add(new Option('Full-width stack', 'wide'));
+    widgetPicker.value = this.config.widget_layout ?? 'grid';
+    widgetPicker.onchange = () => save('widget_layout', widgetPicker.value);
+    widgetLabel.append('Widget layout ',widgetPicker);
+    this.append(widgetLabel);
   }
 }
 
@@ -493,6 +765,10 @@ class FamilyHubLive extends HTMLElement {
       }
       return [...new Set(list)];
     };
+    if (config.weather_entity && !/^weather\.[a-z0-9_]+$/.test(config.weather_entity)) {
+      throw new Error('Select a weather entity for Family Hub Week weather');
+    }
+    this.view?.stopWeather();
     this.config = {
       ...config, calendars:entities('calendars',id => domainOf(id) === 'calendar'),
       actions:entities('actions',id => Object.hasOwn(ACTIONS,domainOf(id)),MAX_ITEMS),
@@ -503,6 +779,7 @@ class FamilyHubLive extends HTMLElement {
     this.view = mount(root,this);
     this.view.updateEntities();
     this.view.loadCalendar();
+    this.view.startWeather();
   }
 
   get hass() { return this._hass; }
@@ -510,13 +787,18 @@ class FamilyHubLive extends HTMLElement {
     const first = !this._hass;
     this._hass = hass;
     this.view?.updateEntities();
+    this.view?.startWeather();
     if (first) this.view?.loadCalendar();
   }
 
   connectedCallback() {
+    this.view?.startWeather();
     this.refreshTimer = setInterval(() => this.view?.loadCalendar(), 5 * 60 * 1000);
   }
-  disconnectedCallback() { clearInterval(this.refreshTimer); }
+  disconnectedCallback() {
+    clearInterval(this.refreshTimer);
+    this.view?.stopWeather();
+  }
   getCardSize() { return 8; }
 }
 
