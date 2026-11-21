@@ -1,12 +1,19 @@
 const CARD = 'family-hub-live';
 const MAX_ITEMS = 4;
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const weekOffset = (date, firstDay) => (date.getDay() - firstDay + DAYS.length) % DAYS.length;
-const WEATHER_ICONS = {
-  sunny:'☀️', clear_night:'🌙', 'clear-night':'🌙', partlycloudy:'🌤️', cloudy:'☁️',
-  rainy:'🌧️', pouring:'🌧️', lightning:'⛈️', 'lightning-rainy':'⛈️', snowy:'❄️',
-  'snowy-rainy':'🌨️', hail:'🌨️', fog:'🌫️', windy:'💨', 'windy-variant':'💨'
-};
+const weekOffset = (date, firstDay) => (date.getUTCDay() - firstDay + DAYS.length) % DAYS.length;
+const WEATHER_ICONS = new Map(Object.entries({
+  sunny:'sunny', clear_night:'night', 'clear-night':'night', partlycloudy:'partly-cloudy',
+  cloudy:'cloudy', rainy:'rainy', pouring:'pouring', lightning:'lightning',
+  'lightning-rainy':'lightning-rainy', snowy:'snowy', 'snowy-rainy':'snowy-rainy',
+  hail:'hail', fog:'fog', windy:'windy', 'windy-variant':'windy-variant', exceptional:'cloud-alert'
+}));
+function weatherIcon(forecast) {
+  const icon = WEATHER_ICONS.get(forecast.condition);
+  const condition = typeof forecast.condition === 'string' ? forecast.condition.replace(/[-_]/g, ' ') : 'Forecast';
+  return `<ha-icon icon="mdi:${icon ? (icon === 'cloud-alert' ? icon : 'weather-'+icon) : 'thermometer'}"
+    title="${escapeText(condition)}" aria-label="${escapeText(condition)}" role="img"></ha-icon>`;
+}
 const temperaturePosition = (current, high, low) =>
   Number.isFinite(current) && Number.isFinite(high) && Number.isFinite(low) && high >= low
     ? (high === low ? 50 : Math.min(100, Math.max(0, 100 * (high-current)/(high-low))))
@@ -33,17 +40,142 @@ const ACTIONS = {
   script: 'turn_on', button: 'press', input_button: 'press', cover: 'open_cover'
 };
 const domainOf = id => typeof id === 'string' ? id.split('.')[0] : '';
+const isEntityId = id => typeof id === 'string' && /^[a-z0-9_]+\.[a-z0-9_]+$/.test(id);
+const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const WIDGET_TYPES = new Set(['weather-forecast', 'thermostat', 'gauge', 'tile', 'sensor', 'entities']);
+
+function widgetConfig(entry) {
+  if (isEntityId(entry)) {
+    const type = {weather:'weather-forecast', climate:'thermostat', sensor:'sensor'}[domainOf(entry)];
+    return {type:typeof type === 'string' ? type : 'tile', entity:entry};
+  }
+  if (!isRecord(entry) || !WIDGET_TYPES.has(entry.type)) return null;
+  if (entry.type === 'entities') {
+    if (!Array.isArray(entry.entities) || !entry.entities.length) return null;
+  } else if (!isEntityId(entry.entity)) return null;
+  return entry;
+}
+
+function orderedWidgetValue(value) {
+  if (Array.isArray(value)) return value.map(orderedWidgetValue);
+  if (!isRecord(value)) return value;
+  if ('card' in value || 'cards' in value || (typeof value.type === 'string' && /^custom:/i.test(value.type))) {
+    throw new Error('Quick Widgets only support built-in cards and rows.');
+  }
+  return Object.fromEntries(Object.keys(value).sort().map(key => [key, orderedWidgetValue(value[key])]));
+}
+
+function normalizeConfig(input, warnings = []) {
+  const config = isRecord(input) ? input : {};
+  const list = (key, validate, limit = Infinity) => {
+    const values = config[key];
+    if (values == null) return [];
+    if (!Array.isArray(values)) {
+      warnings.push(key+' must be a list.');
+      return [];
+    }
+    const seen = new Set();
+    const accepted = [];
+    let invalid = 0;
+    let extra = 0;
+    for (const entry of values) {
+      const identity = validate(entry);
+      if (!identity) {
+        invalid++;
+      } else if (!seen.has(identity)) {
+        seen.add(identity);
+        if (accepted.length < limit) accepted.push(entry);
+        else extra++;
+      }
+    }
+    if (invalid) warnings.push(`${key}: skipped ${invalid} invalid or unsupported ${invalid === 1 ? 'entry' : 'entries'}.`);
+    if (extra) warnings.push(`${key}: only the first ${limit} unique valid entries are shown.`);
+    return accepted;
+  };
+  const option = (key, choices) => {
+    const value = config[key];
+    if (choices.includes(value)) return value;
+    if (value != null) warnings.push(key+' must be '+choices.join(' or ')+'.');
+    return choices[0];
+  };
+  const weather = config.weather_entity;
+  const weatherEntity = isEntityId(weather) && domainOf(weather) === 'weather' ? weather : '';
+  if (weather != null && weather !== '' && !weatherEntity) warnings.push('weather_entity must be a weather entity.');
+  return {
+    ...config,
+    calendars:list('calendars', id => isEntityId(id) && domainOf(id) === 'calendar' && id),
+    actions:list('actions', id => isEntityId(id) && Object.hasOwn(ACTIONS,domainOf(id)) && id, MAX_ITEMS),
+    widgets:list('widgets', widgetKey, MAX_ITEMS),
+    weather_entity:weatherEntity,
+    default_view:option('default_view', ['week','month']),
+    week_start:option('week_start', ['monday','sunday']),
+    ribbon_default:option('ribbon_default', ['expanded','collapsed']),
+    widget_layout:option('widget_layout', ['grid','wide'])
+  };
+}
+
+function widgetKey(entry) {
+  const config = widgetConfig(entry);
+  if (!config) return null;
+  try {
+    return JSON.stringify(orderedWidgetValue(config));
+  } catch {
+    return null;
+  }
+}
+
+let cardHelpers;
+function getCardHelpers() {
+  cardHelpers ??= Promise.resolve().then(() => window.loadCardHelpers()).catch(error => {
+    cardHelpers = undefined;
+    throw error;
+  });
+  return cardHelpers;
+}
+
 const escapeText = value => String(value ?? '').replace(/[&<>"']/g, character =>
   ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[character]);
-const addDays = (date, count) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + count);
-const endpoint = value => value.dateTime ? new Date(value.dateTime) : new Date(value.date + 'T00:00:00');
-const clock = new Intl.DateTimeFormat(undefined, {hour:'numeric', minute:'2-digit'});
-const when = (start, end, date, allDay) => {
-  if (allDay) return 'All day';
-  const onDay = t => t.toDateString() === date.toDateString();
-  return onDay(start) && onDay(end) ? clock.format(start) + ' – ' + clock.format(end)
-    : [start, end].map(t => t.toLocaleString(undefined, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'})).join(' – ');
-};
+// Calendar dates are wall dates carried in UTC fields, so day arithmetic is independent of the browser zone.
+const addDays = (date, count) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + count));
+const monthDate = (date, offset = 0, day = 1) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth()+offset, day));
+const dateKey = date => date.toISOString().slice(0, 10);
+const dateLabel = (date, options) => date.toLocaleDateString(undefined, {...options, timeZone:'UTC'});
+function calendarTime(zone) {
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone:zone, year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23'
+    });
+  } catch {
+    return calendarTime(undefined);
+  }
+  const timeZone = parts.resolvedOptions().timeZone;
+  const wallTime = instant => {
+    const fields = Object.fromEntries(parts.formatToParts(instant).map(({type,value}) => [type, Number(value)]));
+    return Date.UTC(fields.year, fields.month-1, fields.day, fields.hour, fields.minute, fields.second);
+  };
+  const dayAt = instant => new Date(Math.floor(wallTime(instant)/86400000)*86400000);
+  const midnights = new Map();
+  const midnight = date => {
+    const wall = date.getTime();
+    if (midnights.has(wall)) return midnights.get(wall);
+    const estimate = 2*wall - wallTime(wall);
+    const adjusted = estimate + wall - wallTime(estimate);
+    // If a clock change skipped midnight, use the later side of the gap.
+    const instant = new Date(adjusted + wall - wallTime(adjusted) === estimate ? Math.max(estimate, adjusted) : adjusted);
+    if (midnights.size >= 100) midnights.clear();
+    midnights.set(wall, instant);
+    return instant;
+  };
+  const time = new Intl.DateTimeFormat(undefined, {timeZone,hour:'numeric',minute:'2-digit'});
+  const datetime = new Intl.DateTimeFormat(undefined, {timeZone,month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  return {dayAt,midnight,when(start,end,date,allDay) {
+    if (allDay) return 'All day';
+    const format = +dayAt(start) === +date && +dayAt(end) === +date ? time : datetime;
+    return format.format(start)+' – '+format.format(end);
+  }};
+}
 
 const markup = `<style>
 :host{font-family:system-ui,sans-serif;color:#223047;background:#f1f4f8}
@@ -55,7 +187,13 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .quick-header{display:flex;align-items:center;gap:8px;padding:0 10px}
 .quick-header button{min-height:44px;border:0;background:transparent;color:inherit}
 #quick-toggle{flex:1;text-align:left;font-weight:600}
-.action-grid,.widget-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.action-grid,.widget-grid{display:grid;gap:12px}
+.action-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.widget-grid{grid-template-columns:minmax(0,1fr)}
+.widget-grid[data-count="2"],.widget-grid[data-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+.widget-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+.widget-slot{min-width:0}
+.widget-status{margin:0;padding:10px;border:1px solid var(--fh-border);border-radius:9px;overflow-wrap:anywhere}
 .action-grid{padding:12px;border-top:1px solid #dce2e9}
 .quick-control{display:flex;align-items:center;gap:10px;min-height:64px;padding:10px;border:1px solid #cbd5e1;border-radius:9px;background:#f4f7fb;text-align:left;color:inherit}
 .quick-control[aria-pressed="true"]{background:#fff1bf}
@@ -79,13 +217,21 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .day-heading{display:block;width:100%;min-height:44px;margin-bottom:4px;border:0;border-radius:6px;background:transparent;color:inherit;font-weight:700;text-align:center}
 .day-heading:hover,.day-heading:focus-visible{background:#eaf1fa}
 #week-day-details{width:min(540px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}
-.day-body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:start}
+.day.has-weather{--forecast-width:44px;display:grid;grid-template-columns:var(--forecast-width) minmax(0,1fr) var(--forecast-width);grid-template-rows:auto 1fr;align-items:start}
+.day.has-weather .day-heading{grid-area:1 / 2}
+.day.has-weather .weather{grid-area:1 / 1 / 3}
+.day.has-weather .events{grid-area:2 / 2 / 3 / -1;margin-inline-start:6px}
 .events{text-align:left}
 .events .event{padding-inline:4px}
-.day-body.events-only{grid-template-columns:minmax(0,1fr)}
 .weather{display:grid;justify-items:center;gap:3px;font-size:.75rem;font-variant-numeric:tabular-nums}
-.weather-button{border:0;background:transparent;padding:0;width:44px;height:44px;font-size:1.25rem}
+.weather-button{display:grid;place-items:center;border:0;background:transparent;padding:0;width:var(--forecast-width);height:44px;font-size:1.25rem}
 .range{position:relative;width:6px;height:42px;border-radius:4px;background:linear-gradient(to top,#3b82f6,#ef4444)}
+.day .range{height:90px}
+.weather.horizontal{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}
+.weather.horizontal .range{width:48px;height:6px;background:linear-gradient(to right,#ef4444,#3b82f6)}
+.weather.horizontal .wide-range{background:linear-gradient(to right,#ef4444,#facc15,#3b82f6)}
+.weather.horizontal .current{top:50%;left:var(--position)}
+#day-weather:empty{display:none}
 .range.wide-range{background:linear-gradient(to top,#3b82f6,#facc15,#ef4444)}
 .current[hidden]{display:none}
 .quick-control ha-icon{flex:none;--mdc-icon-size:24px}
@@ -116,9 +262,11 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .day-event details[open] .description-preview{display:none}
 .settings-list{list-style:none;padding:0}
 .settings-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
-.widget-grid.wide{grid-template-columns:minmax(0,1fr)}
+
 .month-day .event{padding:3px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.72rem}
-.month-day-top{display:flex;justify-content:space-between;gap:1px}
+.month-day-top{display:flex;justify-content:space-between;align-items:center;gap:1px;width:100%;min-width:0}
+.month-day-top ha-icon{--mdc-icon-size:clamp(12px,3cqi,18px);flex:none}
+.month-day[aria-current="date"] .month-date{background:var(--primary-color,#4a90e2);color:var(--text-primary-color,#fff);border-radius:6px;padding-inline:2px;font-weight:700}
 .day-details{border:1px solid #dce2e9;border-radius:9px;padding:10px;align-self:stretch}
 .detail-header h3{font-size:1rem}
 dialog{width:min(380px,calc(100% - 32px));border:1px solid #cbd5e1;border-radius:12px;padding:22px;color:inherit}
@@ -169,10 +317,14 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
 }
 .calendar-legend {display:flex;flex-wrap:wrap;gap:6px 14px;padding:0;margin:0 0 12px;list-style:none;font-size:.85rem}
 .calendar-legend[hidden] {display:none}
-.calendar-legend li {display:flex;align-items:center;gap:6px}
-.calendar-legend li::before {content:'';width:10px;height:10px;border-radius:50%;background:var(--event-color)}
-@container (max-width:620px) {.action-grid,.widget-grid {grid-template-columns:repeat(2,minmax(0,1fr))}}
-</style><main><section class="quick-actions" aria-label="Quick Actions" id="quick-actions">
+.calendar-legend button {display:flex;align-items:center;gap:6px;border:1px solid transparent;border-radius:16px;padding:4px 8px;background:transparent;color:inherit;text-align:start}
+.calendar-legend button[aria-pressed="true"]{border-color:var(--event-color);background:var(--fh-tint)}
+.calendar-legend button::before {content:'';width:10px;height:10px;border-radius:50%;background:var(--event-color)}
+@container (max-width:720px) {.widget-grid[data-count="3"]{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:620px) {.action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:480px) {.widget-grid[data-count]{grid-template-columns:minmax(0,1fr)}}
+.widget-grid.wide[data-count]{grid-template-columns:minmax(0,1fr)}
+</style><main><p id="config-status" class="muted" role="status" hidden></p><section class="quick-actions" aria-label="Quick Actions" id="quick-actions">
   <div class="quick-header">
     <button type="button" id="quick-toggle" aria-controls="quick-controls" aria-expanded="true">Quick Actions</button>
   </div>
@@ -186,7 +338,7 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
     <button class="action-button" id="month-view" type="button" aria-pressed="false">Month</button>
   </div>
 </div>
-<p class="muted" id="calendar-status" role="status"></p><ul class="calendar-legend" id="calendar-legend" aria-label="Calendar legend"></ul><div id="week"><p id="weather-status" class="muted" role="status" hidden></p><div class="days" id="week-days"></div></div>
+<p class="muted" id="calendar-status" role="status"></p><ul class="calendar-legend" id="calendar-legend" aria-label="Filter by calendar"></ul><p id="weather-status" class="muted" role="status" hidden></p><div id="week"><div class="days" id="week-days"></div></div>
 <div id="month" hidden>
   <div class="month-top">
     <h3 id="month-title"></h3>
@@ -202,6 +354,7 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
         <h3 id="day-title"></h3>
         <button class="action-button" type="button" id="close-day" aria-label="Close day details">×</button>
       </div>
+      <div id="day-weather"></div>
       <div id="day-events" tabindex="0" role="region" aria-label="Events for selected day"></div>
     </aside>
   </div>
@@ -229,30 +382,39 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
 
 function mount(root, host) {
   const document = {getElementById: id => root.getElementById(id)};
+  const configStatus = document.getElementById('config-status');
+  configStatus.textContent = host.configWarnings.join(' ');
+  configStatus.hidden = !host.configWarnings.length;
   const weekDays = document.getElementById('week-days');
   const monthGrid = document.getElementById('month-grid');
   const dayDetails = document.getElementById('day-details');
   const firstDay = host.config.week_start === 'sunday' ? 0 : 1;
   const weekdays = [...DAYS.slice(firstDay), ...DAYS.slice(0, firstDay)];
-  const today = new Date();
-  const weekStart = addDays(today, -weekOffset(today, firstDay));
-  const weekDates = weekdays.map((_, index) => addDays(weekStart, index));
+  let zone = host.hass?.config?.time_zone;
+  let time = calendarTime(zone);
+  let today = time.dayAt(Date.now());
+  let weekStart = addDays(today, -weekOffset(today, firstDay));
+  let weekDates = weekdays.map((_, index) => addDays(weekStart, index));
   let monthView = host.config.default_view === 'month';
-  let month = new Date(today.getFullYear(), today.getMonth(), 1);
+  let month = monthDate(today);
   let selectedDay = null;
   let calendarEvents = [];
+  let selectedCalendar = null;
   const forecasts = new Map();
   let subscription;
   const weatherStatus = document.getElementById('weather-status');
+  const weatherEntity = () => host.hass?.states[host.config.weather_entity];
+  const temperatureUnit = () => weatherEntity()?.attributes.temperature_unit
+    ?? host.hass?.config?.unit_system?.temperature;
+  let lastTemperature;
+  let lastUnit;
 
-  function redrawWeek() {
-    if (monthView) return;
-    const active = root.activeElement;
-    const forecastIndex = active?.dataset.forecast;
-    const dayIndex = active?.dataset.weekDay;
-    renderCalendar();
-    if (forecastIndex !== undefined) weekDays.querySelector(`[data-forecast="${forecastIndex}"]`)?.focus();
-    if (dayIndex !== undefined) weekDays.querySelector(`[data-week-day="${dayIndex}"]`)?.focus();
+  function redrawCalendar(refreshEvents = true) {
+    const active = root.activeElement?.dataset;
+    renderCalendar(refreshEvents);
+    if (active?.forecast !== undefined) weekDays.querySelector(`[data-forecast="${active.forecast}"]`)?.focus();
+    if (active?.weekDay !== undefined) weekDays.querySelector(`[data-week-day="${active.weekDay}"]`)?.focus();
+    if (active?.day !== undefined) monthGrid.querySelector(`[data-day="${active.day}"]`)?.focus({preventScroll:true});
   }
 
   function stopWeather() {
@@ -265,22 +427,28 @@ function mount(root, host) {
   function startWeather() {
     const id = host.config.weather_entity;
     const connection = host.hass?.connection;
-    if (!host.isConnected || !id || !connection || subscription?.connection === connection) return;
+    if (!host.isConnected || !id || !connection || (subscription?.connection === connection && subscription.zone === zone)) return;
     stopWeather();
-    const current = {connection};
+    const current = {connection, zone};
+    redrawCalendar(false);
     subscription = current;
     weatherStatus.textContent = 'Loading daily forecast…';
     weatherStatus.hidden = false;
     Promise.resolve().then(() => connection.subscribeMessage(message => {
       if (subscription !== current) return;
       forecasts.clear();
-      for (const forecast of message.forecast ?? []) {
-        const date = new Date(forecast.datetime);
-        if (Number.isFinite(date.getTime())) forecasts.set(date.toDateString(), forecast);
+      for (const forecast of Array.isArray(message?.forecast) ? message.forecast : []) {
+        if (!forecast || typeof forecast.datetime !== 'string') continue;
+        const instant = Date.parse(forecast.datetime);
+        if (!Number.isFinite(instant) || (!forecast.condition && !Number.isFinite(forecast.temperature)
+          && !Number.isFinite(forecast.templow))) continue;
+        const key = /^\d{4}-\d{2}-\d{2}$/.test(forecast.datetime)
+          ? forecast.datetime : dateKey(time.dayAt(instant));
+        forecasts.set(key, forecast);
       }
       weatherStatus.textContent = forecasts.size ? '' : 'Daily forecast unavailable.';
       weatherStatus.hidden = Boolean(forecasts.size);
-      redrawWeek();
+      redrawCalendar(false);
     }, {type:'weather/subscribe_forecast', entity_id:id, forecast_type:'daily'}))
       .then(unsubscribe => {
         if (subscription === current) current.unsubscribe = unsubscribe;
@@ -290,28 +458,29 @@ function mount(root, host) {
         if (subscription !== current) return;
         weatherStatus.textContent = 'Daily forecast unavailable for the selected weather entity.';
         weatherStatus.hidden = false;
-        redrawWeek();
+        redrawCalendar(false);
       });
   }
 
   function forecastMarkup(date, index, forecast) {
     const high = forecast.temperature;
     const low = forecast.templow;
-    const today = date.toDateString() === new Date().toDateString();
-    const current = host.hass?.states[host.config.weather_entity]?.attributes.temperature;
-    const position = today ? temperaturePosition(current, high, low) : null;
-    const unit = host.hass?.states[host.config.weather_entity]?.attributes.temperature_unit
-      ?? host.hass?.config?.unit_system?.temperature;
+    const isToday = +date === +today;
+    const current = weatherEntity()?.attributes.temperature;
+    const position = isToday ? temperaturePosition(current, high, low) : null;
+    const unit = temperatureUnit();
     const wide = high - low >= (unit === '°F' ? 18 : 10);
-    const icon = WEATHER_ICONS[forecast.condition] ?? '🌡️';
-    return `<div class="weather">
-      <button class="weather-button" type="button" data-forecast="${index}" aria-haspopup="dialog"
-        aria-label="Forecast for ${weekdays[index]} ${date.getDate()}">${icon}</button>
-      ${Number.isFinite(high) ? `<span aria-label="High ${high} degrees">${high}°</span>` : ''}
+    const icon = weatherIcon(forecast);
+    const temperatureLabel = unit ? ' '+escapeText(unit) : ' degrees';
+    const heading = index === null ? icon : `<button class="weather-button" type="button" data-forecast="${index}" aria-haspopup="dialog"
+        aria-label="Forecast for ${weekdays[index]} ${date.getUTCDate()}">${icon}</button>`;
+    return `<div class="weather${index === null ? ' horizontal' : ''}" aria-label="Daily forecast">
+      ${heading}
+      ${Number.isFinite(high) ? `<span aria-label="High ${high}${temperatureLabel}">${high}${escapeText(unit ?? '°')}</span>` : ''}
       ${Number.isFinite(high) && Number.isFinite(low) ? `<span class="range ${wide ? 'wide-range' : ''}" aria-hidden="true">
-        ${today ? `<span class="current" data-high="${high}" data-low="${low}" ${position === null ? 'hidden' : ''} style="--position:${position ?? 50}%"></span>` : ''}
+        ${isToday ? `<span class="current" data-high="${high}" data-low="${low}" ${position === null ? 'hidden' : ''} style="--position:${position ?? 50}%"></span>` : ''}
       </span>` : ''}
-      ${Number.isFinite(low) ? `<span aria-label="Low ${low} degrees">${low}°</span>` : ''}
+      ${Number.isFinite(low) ? `<span aria-label="Low ${low}${temperatureLabel}">${low}${escapeText(unit ?? '°')}</span>` : ''}
     </div>`;
   }
   let request = 0;
@@ -334,39 +503,70 @@ function mount(root, host) {
   const colors = new Map(host.config.calendars.map((id, index) => [id, calendarColor(host.config, id, index)]));
   const legendItems = Array.from(colors, ([id, color]) => {
     const item = window.document.createElement('li');
-    item.style.setProperty('--event-color', color);
-    item.textContent = id;
+    const button = window.document.createElement('button');
+    button.type = 'button';
+    button.style.setProperty('--event-color', color);
+    button.textContent = id;
+    button.setAttribute('aria-pressed', 'false');
+    button.onclick = () => {
+      selectedCalendar = selectedCalendar === id ? null : id;
+      for (const [calendar, control] of legendItems) {
+        control.setAttribute('aria-pressed', String(calendar === selectedCalendar));
+      }
+      redrawCalendar();
+    };
+    item.append(button);
     legend.append(item);
-    return [id, item];
+    return [id, button];
   });
   legend.hidden = !legendItems.length;
 
   function eventsOn(date) {
-    const next = addDays(date, 1);
-    return calendarEvents.filter(event => event.start < next && event.end > date)
-      .map(event => [event.summary, colors.get(event.calendarId), {time:when(event.start, event.end, date, event.allDay),
+    const start = time.midnight(date);
+    const next = time.midnight(addDays(date, 1));
+    return calendarEvents.filter(event => (!selectedCalendar || event.calendarId === selectedCalendar)
+      && event.start < next && event.end > start)
+      .map(event => [event.summary, colors.get(event.calendarId), {time:time.when(event.start, event.end, date, event.allDay),
         location:event.location, description:event.description}]);
   }
 
   async function loadCalendar() {
     const current = ++request;
     const {hass, config} = host;
-    renderCalendar();
+    const nextZone = hass?.config?.time_zone;
+    if (nextZone !== zone) {
+      zone = nextZone;
+      time = calendarTime(zone);
+      calendarEvents = [];
+    }
+    const newToday = time.dayAt(Date.now());
+    if (+today !== +newToday) {
+      if (+month === +monthDate(today) && +month !== +monthDate(newToday)) {
+        month = monthDate(newToday);
+        selectedDay = null;
+      }
+      today = newToday;
+      weekStart = addDays(today, -weekOffset(today, firstDay));
+      weekDates = weekdays.map((_, index) => addDays(weekStart, index));
+    }
+    redrawCalendar();
+    startWeather();
     if (!hass) return;
     if (!config.calendars.length) {
       calendarStatus.textContent = 'Choose calendars in the card editor.';
       return;
     }
     const weekEnd = addDays(weekStart, 7);
-    const monthEnd = new Date(month.getFullYear(), month.getMonth()+1, 1);
+    const monthEnd = monthDate(month, 1);
     const start = new Date(Math.min(weekStart, month));
     const end = new Date(Math.max(weekEnd, monthEnd));
     // Fetch each visible range independently to avoid pulling events between distant months.
     const ranges = month < weekEnd && monthEnd > weekStart ? [[start,end]] : [[weekStart,weekEnd],[month,monthEnd]];
     calendarStatus.textContent = 'Loading events…';
     const results = await Promise.allSettled(config.calendars.flatMap(id => ranges.map(async ([from,to]) => {
-      const query = new URLSearchParams({start:from.toISOString(), end:to.toISOString()});
+      const query = new URLSearchParams({start:time.midnight(from).toISOString(), end:time.midnight(to).toISOString()});
       const events = await hass.callApi('GET', 'calendars/'+encodeURIComponent(id)+'?'+query);
+      const endpoint = value => value.dateTime ? new Date(value.dateTime) : time.midnight(new Date(value.date));
       return events.filter(event => event.start && event.end).map(event => ({...event, calendarId:id,
         start:endpoint(event.start), end:endpoint(event.end), allDay:Boolean(event.start.date)}));
     })));
@@ -374,10 +574,7 @@ function mount(root, host) {
     calendarEvents = results.flatMap(result => result.status === 'fulfilled' ? result.value : [])
       .sort((a,b) => a.start-b.start);
     calendarStatus.textContent = results.some(result => result.status === 'rejected') ? 'Some calendars could not load.' : '';
-    const focusedDay = root.activeElement?.dataset;
-    renderCalendar();
-    if (focusedDay?.day) monthGrid.querySelector('[data-day="'+focusedDay.day+'"]')?.focus();
-    if (focusedDay?.weekDay) weekDays.querySelector('[data-week-day="'+focusedDay.weekDay+'"]')?.focus();
+    redrawCalendar();
   }
 
   const actionButtons = host.config.actions.map(id => {
@@ -396,7 +593,7 @@ function mount(root, host) {
     controls.append(button);
     let pending = false;
     button.onclick = async () => {
-      if (pending || !host.hass?.states[id]) return;
+      if (pending || button.disabled || !host.hass?.states[id]) return;
       if (domain === 'cover' && !window.confirm('Open '+label.firstChild.textContent+'?')) return;
       pending = true;
       button.disabled = true;
@@ -411,15 +608,57 @@ function mount(root, host) {
   const widgetPanel = document.getElementById('widget-panel');
   const widgetGrid = widgetPanel.querySelector('.widget-grid');
   widgetGrid.classList.toggle('wide', host.config.widget_layout === 'wide');
-  const widgets = host.config.widgets.map(id => {
-    const card = window.document.createElement('div');
-    const value = window.document.createElement('strong');
-    card.className = 'device';
-    card.append(window.document.createTextNode(id), value);
-    widgetGrid.append(card);
-    return {id, card, value};
+  const widgets = [...host.widgetCache].map(([key, entry]) => {
+    const slot = window.document.createElement('div');
+    slot.className = 'widget-slot';
+    const status = window.document.createElement('p');
+    status.className = 'widget-status muted';
+    status.setAttribute('role', 'status');
+    slot.append(status);
+    widgetGrid.append(slot);
+    return {key, entry, slot, status};
   });
+  widgetGrid.dataset.count = String(widgets.length);
   widgetPanel.hidden = !widgets.length;
+
+  function updateWidgets(hass) {
+    if (!host.isConnected) return;
+    for (const {key, entry, slot, status} of widgets) {
+      const showError = () => {
+        entry.failed = true;
+        status.dataset.failed = '';
+        status.textContent = `Could not load ${entry.config.name || entry.config.title || entry.config.entity || entry.config.type}. Check the widget YAML and Home Assistant frontend.`;
+        slot.replaceChildren(status);
+      };
+      if (entry.failed) {
+        if (!status.hasAttribute('data-failed')) showError();
+      } else if (entry.card) {
+        try {
+          // Home Assistant sends a fresh hass object when entity state changes.
+          if (entry.hass !== hass) {
+            entry.card.hass = hass;
+            entry.hass = hass;
+          }
+          if (slot.firstChild !== entry.card) slot.replaceChildren(entry.card);
+        } catch {
+          showError();
+        }
+      } else if (!entry.pending) {
+        status.textContent = 'Loading widget…';
+        entry.pending = getCardHelpers()
+          .then(helpers => helpers.createCardElement(JSON.parse(key)))
+          .then(card => {
+            if (!(card instanceof HTMLElement) || card.localName === 'hui-error-card') throw new Error('Invalid widget');
+            entry.card = card;
+          })
+          .catch(() => { entry.failed = true; })
+          .finally(() => {
+            entry.pending = null;
+            if (host.widgetCache.get(key) === entry) host.view?.updateWidgets(host.hass);
+          });
+      }
+    }
+  }
 
   function updateEntities() {
     const hass = host.hass;
@@ -427,12 +666,19 @@ function mount(root, host) {
     for (const [id, item] of legendItems) {
       item.textContent = hass.states[id]?.attributes.friendly_name || id;
     }
-    for (const marker of root.querySelectorAll('.current[data-high]')) {
-      const current = hass.states[host.config.weather_entity]?.attributes.temperature;
-      const position = temperaturePosition(current, Number(marker.dataset.high), Number(marker.dataset.low));
-      marker.hidden = position === null;
-      if (position !== null) marker.style.setProperty('--position', position+'%');
+    const current = weatherEntity()?.attributes.temperature;
+    const unit = temperatureUnit();
+    if (lastUnit !== unit && forecasts.size) {
+      redrawCalendar(false);
+    } else if (lastTemperature !== current) {
+      for (const marker of root.querySelectorAll('.current[data-high]')) {
+        const position = temperaturePosition(current, Number(marker.dataset.high), Number(marker.dataset.low));
+        marker.hidden = position === null;
+        if (position !== null) marker.style.setProperty('--position', position+'%');
+      }
     }
+    lastTemperature = current;
+    lastUnit = unit;
     for (const {id,button,label,state,appearance,busy} of actionButtons) {
       const entity = hass.states[id];
       label.firstChild.textContent = entity?.attributes.friendly_name || id;
@@ -446,13 +692,7 @@ function mount(root, host) {
       button.toggleAttribute('data-custom-fill', isHexColor(fill));
       if (isHexColor(fill)) button.style.setProperty('--action-fill', fill);
     }
-    for (const {id,card,value} of widgets) {
-      const entity = hass.states[id];
-      card.firstChild.textContent = entity?.attributes.friendly_name || id;
-      value.textContent = entity
-        ? (hass.formatEntityState?.(entity) ?? [entity.state,entity.attributes.unit_of_measurement].filter(Boolean).join(' '))
-        : 'Unavailable';
-    }
+    updateWidgets(hass);
   }
   function eventCards(events, tag = 'div') {
     return events.map(([title, color]) => `<${tag} class="event" style="--event-color:${color}">${escapeText(title)}</${tag}>`).join('');
@@ -473,52 +713,55 @@ function mount(root, host) {
   }
 
 
-  function renderCalendar() {
+  function renderCalendar(refreshEvents = true) {
     document.getElementById('week').hidden = monthView;
     document.getElementById('month').hidden = !monthView;
     document.getElementById('week-view').setAttribute('aria-pressed', String(!monthView));
     document.getElementById('month-view').setAttribute('aria-pressed', String(monthView));
     if (!monthView) {
       weekDays.innerHTML = weekDates.map((date, index) => {
-        const forecast = forecasts.get(date.toDateString());
-        return `<article class="day">
-        <button type="button" class="day-heading" data-week-day="${index}" aria-haspopup="dialog" aria-label="View events for ${weekdays[index]} ${date.getDate()}">${weekdays[index]} ${date.getDate()}</button>
-        <div class="day-body ${forecast ? '' : 'events-only'}">
-          ${forecast ? forecastMarkup(date, index, forecast) : ''}
-          <div class="events">${eventCards(eventsOn(date))}</div>
-        </div>
+        const forecast = forecasts.get(dateKey(date));
+        return `<article class="day${forecast ? ' has-weather' : ''}">
+        <button type="button" class="day-heading" data-week-day="${index}" aria-haspopup="dialog" aria-label="View events for ${weekdays[index]} ${date.getUTCDate()}">${weekdays[index]} ${date.getUTCDate()}</button>
+        ${forecast ? forecastMarkup(date, index, forecast) : ''}
+        <div class="events">${eventCards(eventsOn(date))}</div>
       </article>`;
       }).join('');
       return;
     }
 
-    const year = month.getFullYear();
-    const monthNumber = month.getMonth();
     const offset = weekOffset(month, firstDay);
-    const dayCount = new Date(year, monthNumber+1, 0).getDate();
-    const getDayEvents = day => eventsOn(new Date(year, monthNumber, day));
-    document.getElementById('month-title').textContent = month.toLocaleDateString('en-US', {month:'long', year:'numeric'});
+    const dayCount = monthDate(month, 1, 0).getUTCDate();
+    document.getElementById('month-title').textContent = dateLabel(month, {month:'long', year:'numeric'});
     monthGrid.innerHTML = weekdays.map(day => `<div class="weekday">${day}</div>`).join('') +
       '<span aria-hidden="true"></span>'.repeat(offset) +
       Array.from({length:dayCount}, (_, index) => {
         const day = index+1;
-        const events = getDayEvents(day);
+        const date = monthDate(month, 0, day);
+        const events = eventsOn(date);
+        const forecast = forecasts.get(dateKey(date));
         return `<button type="button" class="month-day" data-day="${day}" aria-controls="day-details"
-          aria-expanded="${day === selectedDay}">
-          <span class="month-day-top">${day}</span>
+          aria-expanded="${day === selectedDay}"${+date === +today ? ' aria-current="date"' : ''}>
+          <span class="month-day-top"><span class="month-date">${day}</span>${forecast ? weatherIcon(forecast) : ''}</span>
           ${eventCards(events.slice(0, 3), 'span')}
           ${events.length > 3 ? `<small>+${events.length - 3} more</small>` : ''}
         </button>`;
       }).join('');
     dayDetails.hidden = selectedDay === null;
     document.getElementById('month-content').classList.toggle('has-details', selectedDay !== null);
-    if (selectedDay !== null) {
-      document.getElementById('day-title').textContent = new Date(year, monthNumber, selectedDay)
-        .toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
-      const events = getDayEvents(selectedDay);
+    const weather = document.getElementById('day-weather');
+    if (selectedDay === null) {
+      weather.replaceChildren();
+      return;
+    }
+    const date = monthDate(month, 0, selectedDay);
+    const forecast = forecasts.get(dateKey(date));
+    weather.innerHTML = forecast ? forecastMarkup(date, null, forecast) : '';
+    if (refreshEvents) {
+      document.getElementById('day-title').textContent = dateLabel(date, {weekday:'short', month:'short', day:'numeric'});
       const eventList = document.getElementById('day-events');
+      eventList.innerHTML = dayEventCards(eventsOn(date)) || '<p>No events</p>';
       eventList.scrollTop = 0;
-      eventList.innerHTML = dayEventCards(events) || '<p>No events</p>';
     }
   }
 
@@ -527,19 +770,18 @@ function mount(root, host) {
     const weatherButton = event.target.closest('[data-forecast]');
     if (weatherButton) {
       const date = weekDates[Number(weatherButton.dataset.forecast)];
-      const forecast = forecasts.get(date.toDateString());
+      const forecast = forecasts.get(dateKey(date));
       if (!forecast) return;
-      const entity = host.hass?.states[host.config.weather_entity];
-      const unit = entity?.attributes.temperature_unit ?? host.hass?.config?.unit_system?.temperature ?? '°';
+      const entity = weatherEntity();
+      const unit = temperatureUnit() ?? '°';
       const temperature = value => Number.isFinite(value) ? `${value} ${unit}` : null;
       const high = temperature(forecast.temperature);
       const low = temperature(forecast.templow);
-      const today = date.toDateString() === new Date().toDateString();
-      const current = today ? temperature(entity?.attributes.temperature) : null;
-      document.getElementById('forecast-title').textContent = date.toLocaleDateString(undefined,
-        {weekday:'long', month:'short', day:'numeric'});
+      const isToday = +date === +today;
+      const current = isToday ? temperature(entity?.attributes.temperature) : null;
+      document.getElementById('forecast-title').textContent = dateLabel(date, {weekday:'long', month:'short', day:'numeric'});
       document.getElementById('forecast-summary').textContent = [
-        forecast.condition?.replaceAll('-', ' '), high && `High ${high}`,
+        typeof forecast.condition === 'string' && forecast.condition.replace(/[-_]/g, ' '), high && `High ${high}`,
         low && `Low ${low}`, current && `Current ${current}`,
         Number.isFinite(forecast.precipitation_probability) && `Rain chance ${forecast.precipitation_probability}%`
       ].filter(Boolean).join(' · ') || 'Forecast unavailable';
@@ -550,8 +792,7 @@ function mount(root, host) {
     if (dayButton) {
       const index = Number(dayButton.dataset.weekDay);
       const dialog = document.getElementById('week-day-details');
-      document.getElementById('week-day-title').textContent = weekDates[index]
-        .toLocaleDateString('en-US', {weekday:'long', month:'short', day:'numeric'});
+      document.getElementById('week-day-title').textContent = dateLabel(weekDates[index], {weekday:'long', month:'short', day:'numeric'});
       document.getElementById('week-day-events').innerHTML = dayEventCards(eventsOn(weekDates[index])) || '<p>No events</p>';
       dialog.showModal();
       dialog.scrollTop = 0;
@@ -586,13 +827,13 @@ function mount(root, host) {
   });
   for (const [id, direction] of [['previous-month', -1], ['next-month', 1]]) {
     document.getElementById(id).addEventListener('click', () => {
-      month = new Date(month.getFullYear(), month.getMonth()+direction, 1);
+      month = monthDate(month, direction);
       selectedDay = null;
       calendarEvents = [];
       loadCalendar();
     });
   }
-  return {loadCalendar, updateEntities, startWeather, stopWeather};
+  return {loadCalendar, updateEntities, updateWidgets, startWeather, stop() { request++; stopWeather(); }};
 }
 
 class FamilyHubLiveEditor extends HTMLElement {
@@ -613,6 +854,8 @@ class FamilyHubLiveEditor extends HTMLElement {
   render() {
     if (!this.config || !this._hass) return;
     this.replaceChildren();
+    const warnings = [];
+    const normalized = normalizeConfig(this.config, warnings);
     const save = (key, value) => this.dispatchEvent(new CustomEvent('config-changed', {
       detail:{config:{...this.config,[key]:value}}, bubbles:true, composed:true
     }));
@@ -621,19 +864,21 @@ class FamilyHubLiveEditor extends HTMLElement {
       ['actions','Quick Actions',MAX_ITEMS,id => Object.hasOwn(ACTIONS, domainOf(id))],
       ['widgets','Quick Widgets',MAX_ITEMS,() => true]
     ]) {
-      const selected = this.config[key] ?? [];
+      const selected = normalized[key];
+      const selectedKeys = new Set(key === 'widgets' ? selected.map(widgetKey) : selected);
       const section = document.createElement('fieldset');
       const heading = document.createElement('legend');
       heading.textContent = title;
       section.append(heading);
-      for (const id of selected) {
+      for (const [index, entry] of selected.entries()) {
+        const id = typeof entry === 'string' ? entry : entry.entity;
         const row = document.createElement('p');
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.textContent = 'Remove';
-        remove.setAttribute('aria-label', 'Remove '+id);
-        remove.onclick = () => save(key, selected.filter(item => item !== id));
-        const name = this._hass.states[id]?.attributes.friendly_name || id;
+        const name = this._hass.states[id]?.attributes.friendly_name || id || entry.title || entry.type;
+        remove.setAttribute('aria-label', 'Remove '+name);
+        remove.onclick = () => save(key, selected.filter((_, itemIndex) => itemIndex !== index));
         row.append(name+' ',remove);
         if (key === 'calendars') {
           const picker = document.createElement('input');
@@ -691,7 +936,7 @@ class FamilyHubLiveEditor extends HTMLElement {
       picker.setAttribute('aria-label', 'Choose '+title.toLowerCase()+' entity');
       picker.add(new Option('Select an entity',''));
       for (const id of Object.keys(this._hass.states).filter(allowed).sort()) {
-        if (!selected.includes(id)) {
+        if (!selectedKeys.has(key === 'widgets' ? widgetKey(id) : id)) {
           const name = this._hass.states[id].attributes.friendly_name;
           picker.add(new Option(name ? name+' ('+id+')' : id,id));
         }
@@ -704,20 +949,25 @@ class FamilyHubLiveEditor extends HTMLElement {
       picker.onchange = () => { add.disabled = !picker.value; };
       add.onclick = () => save(key, [...selected,picker.value]);
       section.append(picker,add);
+      if (key === 'widgets') {
+        const hint = document.createElement('p');
+        hint.textContent = 'Use the code editor to add built-in card configurations or change their options.';
+        section.append(hint);
+      }
       this.append(section);
     }
     const weatherLabel = document.createElement('label');
     const weatherPicker = document.createElement('select');
     weatherPicker.add(new Option('None', ''));
     const weatherEntities = Object.keys(this._hass.states).filter(id => domainOf(id) === 'weather').sort();
-    const selectedWeather = this.config.weather_entity;
+    const selectedWeather = normalized.weather_entity;
     if (selectedWeather && !weatherEntities.includes(selectedWeather)) weatherEntities.push(selectedWeather);
     for (const id of weatherEntities) {
       weatherPicker.add(new Option(this._hass.states[id]?.attributes.friendly_name || id, id));
     }
     weatherPicker.value = selectedWeather ?? '';
     weatherPicker.onchange = () => save('weather_entity', weatherPicker.value);
-    weatherLabel.append('Week weather ', weatherPicker);
+    weatherLabel.append('Calendar weather ', weatherPicker);
     this.append(weatherLabel);
 
     const defaults = document.createElement('fieldset');
@@ -733,7 +983,7 @@ class FamilyHubLiveEditor extends HTMLElement {
       const label = document.createElement('label');
       const picker = document.createElement('select');
       for (const [value,name] of Object.entries(options)) picker.add(new Option(name,value));
-      picker.value = this.config[key] ?? Object.keys(options)[0];
+      picker.value = normalized[key];
       picker.onchange = () => save(key,picker.value);
       label.append(title+' ',picker);
       row.append(label);
@@ -745,10 +995,15 @@ class FamilyHubLiveEditor extends HTMLElement {
     const widgetPicker = document.createElement('select');
     widgetPicker.add(new Option('Side by side', 'grid'));
     widgetPicker.add(new Option('Full-width stack', 'wide'));
-    widgetPicker.value = this.config.widget_layout ?? 'grid';
+    widgetPicker.value = normalized.widget_layout;
     widgetPicker.onchange = () => save('widget_layout', widgetPicker.value);
     widgetLabel.append('Widget layout ',widgetPicker);
     this.append(widgetLabel);
+    if (warnings.length) {
+      const status = document.createElement('p');
+      status.textContent = warnings.join(' ');
+      this.append(status);
+    }
   }
 }
 
@@ -757,47 +1012,40 @@ class FamilyHubLive extends HTMLElement {
   static getStubConfig() { return {type:'custom:'+CARD, calendars:[], actions:[], widgets:[]}; }
 
   setConfig(config) {
-    const entities = (key, allowed, limit = Infinity) => {
-      const list = config[key] ?? [];
-      if (!Array.isArray(list) || list.length > limit ||
-          list.some(id => typeof id !== 'string' || !/^[a-z0-9_]+\.[a-z0-9_]+$/.test(id) || !allowed(id))) {
-        throw new Error('Invalid Family Hub '+key+' configuration');
-      }
-      return [...new Set(list)];
-    };
-    if (config.weather_entity && !/^weather\.[a-z0-9_]+$/.test(config.weather_entity)) {
-      throw new Error('Select a weather entity for Family Hub Week weather');
-    }
-    this.view?.stopWeather();
-    this.config = {
-      ...config, calendars:entities('calendars',id => domainOf(id) === 'calendar'),
-      actions:entities('actions',id => Object.hasOwn(ACTIONS,domainOf(id)),MAX_ITEMS),
-      widgets:entities('widgets',() => true,MAX_ITEMS)
-    };
+    this.view?.stop();
+    this.configWarnings = [];
+    this.config = normalizeConfig(config, this.configWarnings);
+    const previousWidgets = this.widgetCache;
+    this.widgetCache = new Map(this.config.widgets.map(entry => {
+      const key = widgetKey(entry);
+      const previous = previousWidgets?.get(key);
+      return [key, previous && !previous.failed ? previous : {config:widgetConfig(entry)}];
+    }));
     const root = this.shadowRoot ?? this.attachShadow({mode:'open'});
     root.innerHTML = markup;
     this.view = mount(root,this);
     this.view.updateEntities();
     this.view.loadCalendar();
-    this.view.startWeather();
   }
 
   get hass() { return this._hass; }
   set hass(hass) {
     const first = !this._hass;
+    const zoneChanged = this._hass?.config?.time_zone !== hass?.config?.time_zone;
     this._hass = hass;
     this.view?.updateEntities();
-    this.view?.startWeather();
-    if (first) this.view?.loadCalendar();
+    if (first || zoneChanged) this.view?.loadCalendar();
+    else this.view?.startWeather();
   }
 
   connectedCallback() {
-    this.view?.startWeather();
+    this.view?.updateEntities();
+    this.view?.loadCalendar();
     this.refreshTimer = setInterval(() => this.view?.loadCalendar(), 5 * 60 * 1000);
   }
   disconnectedCallback() {
     clearInterval(this.refreshTimer);
-    this.view?.stopWeather();
+    this.view?.stop();
   }
   getCardSize() { return 8; }
 }

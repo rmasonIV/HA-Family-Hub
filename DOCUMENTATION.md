@@ -15,6 +15,10 @@ come here for the details on any specific feature, the full `todo`/
 > on the docs site for those in the meantime). See
 > [CHANGELOG.md](CHANGELOG.md) for what's shipped since.
 
+## Family Hub Live configuration
+
+For `custom:family-hub-live`, see the [Family Hub Live configuration reference](live/README.md) for both editor and YAML setup, weather, calendar filtering, the supported Home Assistant widget types, limits, and migration. The calendar settings below cover the separate `custom:family-week-calendar-card`.
+
 ## Features
 
 ### Calendar & layout
