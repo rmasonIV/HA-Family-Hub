@@ -57,7 +57,7 @@ test('one HA-zone forecast feeds Week, Month and the selected day without losing
   assert.equal(callbacks.length, 1);
   assert.match(decodeURIComponent(calls[0]), /start=2026-11-01T05:00:00.000Z&end=2026-12-01T06:00:00.000Z/);
   assert.equal(find('.month-day[aria-current]').dataset.day, '20');
-  assert.equal(find('#month-grid ha-icon'), null);
+  assert.equal(find('#month-grid .forecast-icon'), null);
   find('[data-day="20"]').click();
   assert.match(find('#day-events').textContent, /Evening walk/);
   assert.match(find('#day-events').textContent, /8:00/);
@@ -66,9 +66,17 @@ test('one HA-zone forecast feeds Week, Month and the selected day without losing
     {datetime:'2026-11-21T02:00:00Z', condition:'partlycloudy', temperature:72, templow:50},
     {datetime:'2026-11-22', condition:'rainy', temperature:61}
   ]});
-  assert.equal(find('[data-day="20"] ha-icon').getAttribute('icon'), 'mdi:weather-partly-cloudy');
-  assert.equal(find('[data-day="21"] ha-icon'), null);
-  assert.equal(find('[data-day="22"] ha-icon').getAttribute('icon'), 'mdi:weather-rainy');
+  const partlyCloudy = find('[data-day="20"] .forecast-icon');
+  const rain = find('[data-day="22"] .forecast-icon');
+  assert.equal(partlyCloudy.alt, 'Partly cloudy');
+  assert.equal(rain.alt, 'Rainy');
+  assert.equal(find('[data-day="21"] .forecast-icon'), null);
+  assert.notEqual(partlyCloudy.src, rain.src);
+  const svg = Buffer.from(partlyCloudy.src.split(',')[1], 'base64').toString('utf8');
+  assert.match(svg, /<svg/);
+  assert.match(svg, /fill="#[0-9a-f]{6}"/i);
+  assert.equal(find('#day-weather .forecast-icon').src, partlyCloudy.src);
+  assert.equal(find('#day-weather .forecast-icon').alt, '');
   assert.equal(find('#day-events details').open, true);
   assert.equal(find('#day-weather .forecast-condition').textContent, 'Partly cloudy');
   assert.deepEqual([...find('#day-weather .forecast-temperatures').children].map(node => node.textContent.trim()),
@@ -83,10 +91,11 @@ test('one HA-zone forecast feeds Week, Month and the selected day without losing
   assert.equal(find('#day-weather .range'), null);
   find('#week-view').click();
   assert.ok(find('#week-days .wide-range'));
+  assert.equal(find('#week-days .forecast-icon').src, partlyCloudy.src);
   assert.equal(callbacks.length, 1);
   find('#month-view').click();
   callbacks[0]({forecast:[]});
-  assert.equal(find('#month-grid ha-icon'), null);
+  assert.equal(find('#month-grid .forecast-icon'), null);
   assert.equal(find('#day-weather').textContent, '');
   card.remove();
   await tick();
@@ -303,4 +312,40 @@ test('missing permissions and invalid Mealie URLs leave the dinner event readabl
   assert.match(find('#config-status').textContent, /Mealie recipe details/);
   assert.match(find('#day-events').textContent, /Pasta night/);
   assert.equal(find('.meal-recipe'), null);
+});
+
+test('Week navigation honors Sunday start and keeps browsed weeks through refreshes and view changes', async t => {
+  const {window, card, find, calls} = setup(t, {
+    calendars:['calendar.family','calendar.school'], week_start:'sunday'
+  });
+  await tick();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 15');
+  assert.match(find('#week-days').textContent, /Evening walk/);
+  const currentLabel = find('#week-title').textContent;
+
+  find('#previous-week').click();
+  await tick();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 8');
+  assert.doesNotMatch(find('#week-days').textContent, /Evening walk/);
+  find('#month-view').click();
+  find('#week-view').click();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 8');
+  find('#next-week').click();
+  await tick();
+  assert.equal(find('#week-title').textContent, currentLabel);
+  assert.match(find('#week-days').textContent, /Evening walk/);
+
+  for (let i = 0; i < 3; i++) find('#next-week').click();
+  await tick();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 6');
+  assert.ok(calls.some(path => decodeURIComponent(path).includes(
+    'start=2026-12-06T06:00:00.000Z&end=2026-12-13T06:00:00.000Z')));
+  window.Date.now = () => Date.parse('2026-11-23T06:01:00Z');
+  await card.view.loadCalendar();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 6');
+  find('#current-week').click();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 22');
+  window.Date.now = () => Date.parse('2026-11-30T06:01:00Z');
+  await card.view.loadCalendar();
+  assert.equal(find('[data-week-day="0"]').textContent, 'Sun 29');
 });
