@@ -70,7 +70,22 @@ In `grid` mode, one card fills the row, two sit side by side, three use three co
 
 Family Hub uses Home Assistant's card helpers to create each widget and keeps the same instances through forecast updates, event refreshes, and view switches. Its CSS layout responds to the available width. Home Assistant's Grid card has a configured column count and defaults to square cells, so this layout uses CSS to give the native cards room to size themselves. [Home Assistant Grid card](https://www.home-assistant.io/dashboards/grid/)
 
-### YAML example
+### YAML presets
+
+#### Compact week
+
+```yaml
+type: custom:family-hub-live
+default_view: week
+week_start: monday
+ribbon_default: collapsed
+calendars:
+  - calendar.family
+  - calendar.school
+  - calendar.mealie_dinner
+```
+
+#### Wall display with month details
 
 Replace the sample entity IDs with yours. Quote colors so YAML reads them as strings.
 
@@ -126,6 +141,8 @@ widgets:
 
 ### Migration and troubleshooting
 
+- Remove a legacy top-level `title:` from the Family Hub Live card YAML when convenient. Existing dashboards load with the key silently ignored, and saving a change through the visual editor drops it. Set the heading on the Home Assistant dashboard view. Widget-level titles, such as the **Entry** example above, still apply.
+
 - Existing widget IDs can stay as strings. A `weather.*` ID opens a Weather Forecast card, a `climate.*` ID opens a Thermostat card, a `sensor.*` ID opens a Sensor card, and other IDs open a Tile card. Tiles and thermostats may provide native controls according to Home Assistant permissions. To require a particular presentation, specify the card type in YAML.
 - Existing calendar colors, action appearance, ribbon defaults, and `wide` layouts continue to work. Existing `grid` layouts automatically use the new count-based layout.
 - The card skips invalid list entries and duplicates before applying the four-item limits. The first four valid unique actions and widgets are used in YAML order. Equivalent widget mappings are deduplicated even when their key order differs. Two different card configurations may use the same entity. Check the card's configuration message for skipped entries or invalid settings.
@@ -135,4 +152,16 @@ widgets:
 
 ## Screenshots and test data
 
-The main README's existing screenshots show earlier or upstream interfaces. Refresh captures once the feature branch is stable. Use the fictional data in `preview/live.html` to check layouts or try the sample Kitchen recipe and grocery flow. The Kitchen preview uses local sample data. Then capture the real Home Assistant UI with synthetic calendars, weather, and devices to show the native cards. Keep real family events, names, event notes, and locations out of captures.
+Open [the interactive preview](../preview/live.html) from a checkout to try the real card with fictional June 2026 data. The browser uses fake Home Assistant calendar, forecast, and state responses. Native Home Assistant icons and Quick Widget cards have lightweight stand-ins, so the captures verify the Live card layout and widget placement. The pre-existing Kitchen concept in the interactive preview is hidden during captures.
+
+From the repository root, install the pinned screenshot dependency and its Chromium build, then regenerate the five README images.
+
+```sh
+npm ci --prefix preview
+npm --prefix preview exec -- playwright install chromium
+npm run capture --prefix preview
+```
+
+The harness checks Week and Month at desktop and phone widths, verifies the Mealie Dinner filter through a view switch, and writes PNGs to `images/live/`. The date, time zone, locale, viewport and device scale are fixed. Font rendering can differ by operating system. The harness opens a local file and blocks HTTP(S) requests.
+
+See the [Mealie assessment and Kitchen V1 proposal](KITCHEN_V1.md) for the next design review.
