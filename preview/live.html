@@ -31,7 +31,7 @@
 <body>
 <header>
   <h1>Family Hub Live preview</h1>
-  <span>Fictional calendar and weather data with a simulated Home Assistant widget</span>
+  <span>Fictional calendar, weather, and Mealie recipe data</span>
   <button type="button" id="theme" aria-pressed="false">Dark theme</button>
   <button type="button" id="startup" aria-pressed="false">Start collapsed</button>
 </header>
@@ -143,13 +143,15 @@
     const end = new Date(start); end.setHours(hour+1);
     return {summary,location,start:{dateTime:start.toISOString()},end:{dateTime:end.toISOString()}};
   };
+  const dinner = 'Lemon chickpea bowls';
   const calendars = {
     'calendar.family':[event(0,18,'Dinner with friends','Home'),event(2,9,'Dentist appointment','Oak Dental'),event(5,11,'Family outing','Community park'),event(-2,16,'Board games','Home'),event(9,18,'Pasta night','Home')],
     'calendar.school':[event(1,8,'Library day','School library'),event(3,17,'Team practice','Field 2'),event(4,19,'Movie night','School gym')],
-    'calendar.mealie_dinner':[event(new Date().getDay(),18,'Lemon chickpea bowls','Kitchen')]
+    'calendar.mealie_dinner': [event(new Date().getDay(),18,dinner,'')],
   };
   const config = {
     type:'custom:family-hub-live',default_view:'month_details',week_start:'sunday',weather_entity:'weather.home',
+    mealie:{calendar:'calendar.mealie_dinner',config_entry_id:'demo-entry',url:'https://mealie.example.test',group:'family'},
     calendars:Object.keys(calendars),actions:['light.living_room','cover.garage'],
     widgets:['sensor.outdoor_temperature'],action_appearance:{'light.living_room':{icon:'mdi:lamps',on_color:'#d48b22',off_color:'#738da8'}}
   };
@@ -164,6 +166,12 @@
       'sensor.outdoor_temperature':state('Outside','68',{unit_of_measurement:'°F'})
     },
     connection:{async subscribeMessage(callback) { callback({forecast}); return () => {}; }},
+    async callWS(message) {
+      const now = new Date();
+      const day = new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate())).toISOString().slice(0,10);
+      return {response:{mealplan: message.service_data.start_date === day
+        ? [{mealplan_date:day,entry_type:'dinner',recipe:{name:dinner,slug:'lemon-chickpea-bowls'}}] : []}};
+    },
     async callApi(method,path) {
       const [resource,query] = path.split('?');
       const id = decodeURIComponent(resource.split('/')[1]);
@@ -181,6 +189,30 @@
   };
   renderCard();
   card.hass = hass;
+  // Preview-only assets replace the external recipe destination without contacting Mealie.
+  const sampleRecipe = URL.createObjectURL(new Blob([`<!doctype html><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1"><title>Lemon chickpea bowls</title>
+    <style>body{color-scheme:light dark;font:1rem/1.6 system-ui;max-width:36rem;margin:3rem auto;padding:0 1rem}</style>
+    <p>Fictional Mealie recipe</p><h1>Lemon chickpea bowls</h1><h2>Ingredients</h2>
+    <ul><li>Chickpeas</li><li>Rice</li><li>Cucumber</li><li>Lemon</li><li>Olive oil and paprika</li></ul>
+    <h2>Directions</h2><ol><li>Roast chickpeas with olive oil and paprika.</li>
+    <li>Serve over rice with cucumber and a squeeze of lemon.</li></ol>`], {type:'text/html'}));
+  const sampleImage = 'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 110">
+    <rect width="160" height="110" fill="#eed4b3"/><ellipse cx="80" cy="57" rx="57" ry="45" fill="#e9ece5"/>
+    <ellipse cx="80" cy="55" rx="46" ry="35" fill="#f1ca82"/><path fill="#3c7d4d" d="M45 47l32-18 18 11-32 29zm58 6 17-3-3 23-21 10z"/>
+    <g fill="#ba733e"><circle cx="63" cy="49" r="7"/><circle cx="73" cy="62" r="7"/><circle cx="88" cy="53" r="7"/>
+    <circle cx="96" cy="66" r="7"/><circle cx="62" cy="72" r="7"/><circle cx="83" cy="75" r="6"/></g>
+    <path fill="#f6da4f" d="M81 27a24 24 0 0 1 34 21z"/><path fill="#fff2ab" d="M88 29a19 19 0 0 1 22 15z"/>
+    </svg>`);
+  new MutationObserver(() => {
+    for (const link of card.shadowRoot.querySelectorAll('.meal-recipe a[href^="https://mealie.example.test/"]')) {
+      link.href = sampleRecipe;
+      const image = document.createElement('img');
+      image.alt = '';
+      image.src = sampleImage;
+      link.before(image);
+    }
+  }).observe(card.shadowRoot, {childList:true,subtree:true});
   document.querySelector('#theme').onclick = event => {
     event.currentTarget.setAttribute('aria-pressed', String(document.body.classList.toggle('dark')));
   };

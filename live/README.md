@@ -35,6 +35,24 @@ In Month, today's date has its own marker and the selected date has a tinted cel
 
 Calendar events refresh every five minutes while the card is open. The refresh updates today's highlight and advances an open pane that was showing today. A pane showing a different date stays on that date. Home Assistant sends daily forecast updates through its weather subscription, and entity updates move the current-temperature marker.
 
+## Mealie recipe details
+
+Keep your Mealie Dinner entity in `calendars`. Add this optional block in the card's YAML editor to show a recipe thumbnail when available and an **Open in Mealie** link in Week day details and the Month details pane.
+
+```yaml
+mealie:
+  calendar: calendar.mealie_dinner
+  config_entry_id: YOUR_HOME_ASSISTANT_MEALIE_CONFIG_ENTRY_ID
+  url: https://meals.example.com
+  group: home
+```
+
+- **Calendar** is the same entity ID already listed under `calendars`.
+- **Config entry ID** identifies the existing Home Assistant integration. In Home Assistant, select **Mealie: Get mealplan** in the automation editor, choose your Mealie instance, then switch that action to YAML to read its `config_entry_id`. Use the same instance that supplies the dinner calendar.
+- **URL** is the browser-accessible Mealie base address without a recipe path. **Group** is the segment after `/g/` when you open a recipe in Mealie. For example, use `home` for a recipe URL containing `/g/home/r/`.
+- The card reads the selected date through Home Assistant and uses the returned recipe to enrich a matching dinner title. A plain meal note or an ambiguous recipe match appears as a regular event. No additional Mealie token is needed.
+- The recipe opens in a new tab using your normal Mealie login. If an image is missing or the browser cannot load it, the title and recipe link remain available. If Home Assistant cannot return the meal plan, check the instance ID and the **Get mealplan** action with the same Home Assistant account used on the dashboard.
+
 ## Quick Widgets
 
 | Built-in card | Typical setup |

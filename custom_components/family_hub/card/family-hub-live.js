@@ -64,6 +64,24 @@ function orderedWidgetValue(value) {
   return Object.fromEntries(Object.keys(value).sort().map(key => [key, orderedWidgetValue(value[key])]));
 }
 
+const isPathSegment = value => typeof value === 'string' && /^[a-z0-9_-]+$/i.test(value);
+function normalizeMealie(value, calendars, warnings) {
+  if (value == null) return null;
+  try {
+    const {calendar, config_entry_id, url, group} = value;
+    const base = new URL(url);
+    if (!calendars.includes(calendar) || !isPathSegment(config_entry_id) || !isPathSegment(group)
+        || !['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) {
+      throw new Error('Invalid Mealie settings');
+    }
+    base.pathname = base.pathname.replace(/\/+$/, '')+'/';
+    return {calendar, config_entry_id, base, group};
+  } catch {
+    warnings.push('Mealie recipe details need a configured dinner calendar, a Home Assistant config entry ID, a Mealie URL, and a group slug.');
+    return null;
+  }
+}
+
 function normalizeConfig(input, warnings = []) {
   const config = isRecord(input) ? input : {};
   const list = (key, validate, limit = Infinity) => {
@@ -100,9 +118,11 @@ function normalizeConfig(input, warnings = []) {
   const weather = config.weather_entity;
   const weatherEntity = isEntityId(weather) && domainOf(weather) === 'weather' ? weather : '';
   if (weather != null && weather !== '' && !weatherEntity) warnings.push('weather_entity must be a weather entity.');
+  const calendars = list('calendars', id => isEntityId(id) && domainOf(id) === 'calendar' && id);
   return {
     ...config,
-    calendars:list('calendars', id => isEntityId(id) && domainOf(id) === 'calendar' && id),
+    calendars,
+    mealie:normalizeMealie(config.mealie, calendars, warnings),
     actions:list('actions', id => isEntityId(id) && Object.hasOwn(ACTIONS,domainOf(id)) && id, MAX_ITEMS),
     widgets:list('widgets', widgetKey, MAX_ITEMS),
     weather_entity:weatherEntity,
@@ -255,6 +275,10 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 #day-events{overflow-y:auto;overscroll-behavior:contain}
 .day-event{margin:6px 0;padding:10px}
 .day-event p{margin:4px 0;overflow-wrap:anywhere}
+.meal-recipe{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+.meal-recipe img{inline-size:88px;block-size:64px;border-radius:6px;object-fit:cover}
+.meal-recipe a{color:var(--link-text-color,var(--primary-text-color,inherit));font-weight:600;padding-block:8px}
+.meal-recipe:empty{display:none}
 .event-meta{display:flex;align-items:baseline;gap:6px}
 .event-icon{flex:0 0 1.2em;text-align:center}
 .day-event details{margin-top:6px}
@@ -553,7 +577,7 @@ function mount(root, host) {
     return calendarEvents.filter(event => (!selectedCalendar || event.calendarId === selectedCalendar)
       && event.start < next && event.end > start)
       .map(event => [event.summary, colors.get(event.calendarId), {time:time.when(event.start, event.end, date, event.allDay),
-        location:event.location, description:event.description}]);
+        location:event.location, description:event.description, calendarId:event.calendarId}]);
   }
 
   async function loadCalendar() {
@@ -731,6 +755,67 @@ function mount(root, host) {
     return events.map(([title, color]) => `<${tag} class="event" style="--event-color:${color}">${escapeText(title)}</${tag}>`).join('');
   }
 
+  const recipeCache = new Map();
+
+  async function loadDinnerRecipes(day) {
+    const {mealie} = host.config;
+    const message = await host.hass.callWS({
+      type:'call_service', domain:'mealie', service:'get_mealplan', return_response:true,
+      service_data:{config_entry_id:mealie.config_entry_id, start_date:day, end_date:day}
+    });
+    const meals = message?.response?.mealplan;
+    if (!Array.isArray(meals)) throw new Error('Invalid meal plan response');
+    const recipes = new Map();
+    for (const meal of meals) {
+      const recipe = meal?.recipe;
+      if (meal?.mealplan_date !== day || meal?.entry_type !== 'dinner' || !recipe
+          || typeof recipe.name !== 'string' || !isPathSegment(recipe.slug)) continue;
+      // Calendar events carry the title but no recipe ID. Skip ambiguous same-name recipes.
+      if (!recipes.has(recipe.name)) recipes.set(recipe.name, recipe);
+      else if (recipes.get(recipe.name)?.slug !== recipe.slug) recipes.set(recipe.name, null);
+    }
+    return recipes;
+  }
+
+  async function enrichDinnerEvents(events, date) {
+    const containers = events.querySelectorAll('.meal-recipe');
+    if (!containers.length || !host.hass) return;
+    const day = dateKey(date);
+    let cached = recipeCache.get(day);
+    if (!cached || Date.now() >= cached.expires) {
+      if (recipeCache.size >= 14) recipeCache.delete(recipeCache.keys().next().value);
+      cached = {expires:Date.now()+5*60*1000, recipes:loadDinnerRecipes(day).catch(() => null)};
+      recipeCache.set(day, cached);
+    }
+    const recipes = await cached.recipes;
+    const {base,group} = host.config.mealie ?? {};
+    for (const container of containers) {
+      if (!container.isConnected || !base) continue;
+      if (!recipes) {
+        container.textContent = 'Recipe details unavailable.';
+        continue;
+      }
+      const title = container.parentElement.querySelector('strong').textContent;
+      const recipe = recipes.get(title);
+      if (!recipe) continue;
+      const link = window.document.createElement('a');
+      link.href = new URL(`g/${group}/r/${recipe.slug}`, base).href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Open in Mealie ↗';
+      link.setAttribute('aria-label', `Open ${title} in Mealie (new tab)`);
+      if (recipe.image && isPathSegment(recipe.recipe_id)) {
+        const photo = window.document.createElement('img');
+        photo.alt = '';
+        photo.referrerPolicy = 'no-referrer';
+        photo.addEventListener('error', () => photo.remove(), {once:true});
+        photo.src = new URL(`api/media/recipes/${recipe.recipe_id}/images/min-original.webp`, base).href;
+        container.append(photo);
+      }
+      container.append(link);
+    }
+  }
+
   function dayEventCards(events) {
     return events.map(([title, color, details = {}]) => `<article class="event day-event" style="--event-color:${color}">
       <strong>${escapeText(title)}</strong>
@@ -742,6 +827,7 @@ function mount(root, host) {
         </summary>
         <p class="description-full">${escapeText(details.description)}</p>
       </details>` : ''}
+      ${details.calendarId === host.config.mealie?.calendar && host.config.mealie ? '<div class="meal-recipe"></div>' : ''}
     </article>`).join('');
   }
 
@@ -797,6 +883,7 @@ function mount(root, host) {
       document.getElementById('day-title').textContent = dateLabel(date, {weekday:'short', month:'short', day:'numeric'});
       const eventList = document.getElementById('day-events');
       eventList.innerHTML = dayEventCards(eventsOn(date)) || '<p>No events</p>';
+      enrichDinnerEvents(eventList, date);
       eventList.scrollTop = 0;
     }
   }
@@ -829,7 +916,9 @@ function mount(root, host) {
       const index = Number(dayButton.dataset.weekDay);
       const dialog = document.getElementById('week-day-details');
       document.getElementById('week-day-title').textContent = dateLabel(weekDates[index], {weekday:'long', month:'short', day:'numeric'});
-      document.getElementById('week-day-events').innerHTML = dayEventCards(eventsOn(weekDates[index])) || '<p>No events</p>';
+      const eventList = document.getElementById('week-day-events');
+      eventList.innerHTML = dayEventCards(eventsOn(weekDates[index])) || '<p>No events</p>';
+      enrichDinnerEvents(eventList, weekDates[index]);
       dialog.showModal();
       dialog.scrollTop = 0;
       return;

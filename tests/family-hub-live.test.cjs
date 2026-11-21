@@ -242,6 +242,78 @@ test('a missing helper leaves a local error and can recover on a configuration e
   assert.ok(find('.widget-slot ha-card'));
 });
 
+const mealieSettings = {
+  calendar:'calendar.mealie_dinner', config_entry_id:'entry-test', url:'https://meals.example.test/mealie', group:'family'
+};
+const dinnerDay = '2026-11-20';
+const dinnerCalendarEvent = summary => ({summary, start:{date:dinnerDay}, end:{date:'2026-11-21'}});
+const dinnerRecipe = (name, slug, image = 'cache-key') =>
+  ({entry_type:'dinner', mealplan_date:dinnerDay, recipe:{name, slug, recipe_id:'recipe-uuid', image}});
+
+test('Mealie enriches only existing dinner events and shares the lookup between Month and Week', async t => {
+  const requests = [];
+  const {find, window} = setup(t, {
+    default_view:'month_details', calendars:['calendar.mealie_dinner','calendar.family'], mealie:mealieSettings
+  }, {
+    async callApi(_, path) {
+      return path.includes('calendar.mealie_dinner')
+        ? ['Chickpea bowls', 'Takeout', 'Soup', 'Ambiguous'].map(dinnerCalendarEvent)
+        : [dinnerCalendarEvent('Chickpea bowls')];
+    },
+    async callWS(message) {
+      requests.push(message);
+      return {response:{mealplan:[
+        dinnerRecipe('Chickpea bowls', 'chickpea-bowls'),
+        dinnerRecipe('Soup', 'soup', null),
+        dinnerRecipe('Ambiguous', 'first'),
+        dinnerRecipe('Ambiguous', 'second'),
+        {entry_type:'dinner', mealplan_date:dinnerDay, title:'Takeout', recipe:null}
+      ]}};
+    }
+  });
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  await tick();
+  assert.deepEqual(JSON.parse(JSON.stringify(requests)), [{
+    type:'call_service', domain:'mealie', service:'get_mealplan', return_response:true,
+    service_data:{config_entry_id:'entry-test', start_date:dinnerDay, end_date:dinnerDay}
+  }]);
+  const list = find('#day-events');
+  assert.equal(list.querySelectorAll('article').length, 5);
+  assert.equal(list.querySelectorAll('.meal-recipe a').length, 2);
+  const link = list.querySelector('.meal-recipe a');
+  const photo = list.querySelector('.meal-recipe img');
+  assert.equal(link.href, 'https://meals.example.test/mealie/g/family/r/chickpea-bowls');
+  assert.equal(link.target, '_blank');
+  assert.equal(photo.src, 'https://meals.example.test/mealie/api/media/recipes/recipe-uuid/images/min-original.webp');
+  photo.dispatchEvent(new window.Event('error'));
+  assert.ok(!photo.isConnected && link.isConnected);
+  find('#week-view').click();
+  find('[data-week-day="4"]').click();
+  await tick();
+  assert.equal(find('#week-day-events .meal-recipe a').href, link.href);
+  assert.equal(requests.length, 1);
+});
+
+test('missing permissions and invalid Mealie URLs leave the dinner event readable', async t => {
+  const {card, find} = setup(t, {
+    default_view:'month_details', calendars:['calendar.mealie_dinner'], mealie:mealieSettings
+  }, {
+    async callApi() { return [dinnerCalendarEvent('Pasta night')]; },
+    async callWS() { throw new Error('Not permitted'); }
+  });
+  await tick();
+  assert.match(find('#day-events').textContent, /Pasta night/);
+  assert.match(find('#day-events').textContent, /Recipe details unavailable/);
+  card.setConfig({
+    default_view:'month_details', calendars:['calendar.mealie_dinner'],
+    mealie:{...mealieSettings, url:'javascript:alert(1)'}
+  });
+  await tick();
+  assert.match(find('#config-status').textContent, /Mealie recipe details/);
+  assert.match(find('#day-events').textContent, /Pasta night/);
+  assert.equal(find('.meal-recipe'), null);
+});
+
 test('Week navigation honors Sunday start and keeps browsed weeks through refreshes and view changes', async t => {
   const {window, card, find, calls} = setup(t, {
     calendars:['calendar.family','calendar.school'], week_start:'sunday'
