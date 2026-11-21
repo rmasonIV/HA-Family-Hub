@@ -1,6 +1,4 @@
-> **Reduced fork — draft, not deployed.** See [REDUCED_PROFILE.md](REDUCED_PROFILE.md) for the actual supported features, security changes, tests, and deployment prerequisites. Grocy, the built-in Recipe Box/imports, external wishlists, Companion, Quick Add, and uploaded ZIP updates are disabled. The upstream feature overview below includes features excluded from this fork. Family Hub Live supports optional Mealie dinner recipe details.
-
-<h1 align="center">Family Hub</h1>
+<h1 align="center">Family Hub Light</h1>
 
 This GPLv3 fork of Family Hub is maintained by **rmasonIV**. Changes since 2026 include Family Hub Live, calendar and weather updates, and Mealie recipe previews.
 
