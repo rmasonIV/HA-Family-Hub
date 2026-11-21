@@ -70,7 +70,9 @@ test('one HA-zone forecast feeds Week, Month and the selected day without losing
   assert.equal(find('[data-day="21"] ha-icon'), null);
   assert.equal(find('[data-day="22"] ha-icon').getAttribute('icon'), 'mdi:weather-rainy');
   assert.equal(find('#day-events details').open, true);
-  assert.match(find('#day-weather').textContent, /72°F/);
+  assert.equal(find('#day-weather .forecast-condition').textContent, 'Partly cloudy');
+  assert.deepEqual([...find('#day-weather .forecast-temperatures').children].map(node => node.textContent.trim()),
+    ['50°F', '', '72°F']);
   assert.ok(find('#day-weather .wide-range .current'));
   card.hass = {...hass, states:{...hass.states, 'weather.home':{attributes:{temperature:72}}}};
   assert.equal(find('#day-weather .current').style.getPropertyValue('--position'), '0%');
@@ -89,6 +91,40 @@ test('one HA-zone forecast feeds Week, Month and the selected day without losing
   card.remove();
   await tick();
   assert.equal(stops(), 1);
+});
+
+test('Month with details opens today, follows a day rollover, and allows closing or picking another date', async t => {
+  const {window, card, find} = setup(t, {default_view:'month_details'});
+  assert.equal(find('#month').hidden, false);
+  assert.equal(find('#day-details').hidden, false);
+  assert.equal(find('.month-day[aria-expanded="true"]').dataset.day, '20');
+
+  window.Date.now = () => Date.parse('2026-11-21T06:01:00Z');
+  await card.view.loadCalendar();
+  assert.equal(find('.month-day[aria-current]').dataset.day, '21');
+  assert.equal(find('.month-day[aria-expanded="true"]').dataset.day, '21');
+
+  find('[data-day="18"]').click();
+  window.Date.now = () => Date.parse('2026-11-22T06:01:00Z');
+  await card.view.loadCalendar();
+  assert.equal(find('.month-day[aria-expanded="true"]').dataset.day, '18');
+
+  find('#close-day').click();
+  window.Date.now = () => Date.parse('2026-12-01T06:01:00Z');
+  await card.view.loadCalendar();
+  assert.equal(find('.month-day[aria-current]').dataset.day, '1');
+  assert.equal(find('#day-details').hidden, true);
+});
+
+test('a pane showing today follows the first day of a new month', async t => {
+  const {window, card, find} = setup(t, {default_view:'month_details'});
+  window.Date.now = () => Date.parse('2026-11-30T06:01:00Z');
+  await card.view.loadCalendar();
+  assert.equal(find('.month-day[aria-expanded="true"]').dataset.day, '30');
+  window.Date.now = () => Date.parse('2026-12-01T06:01:00Z');
+  await card.view.loadCalendar();
+  assert.equal(find('.month-day[aria-expanded="true"]').dataset.day, '1');
+  assert.match(find('#month-title').textContent, /December/);
 });
 
 test('legend isolates one calendar across both views and both event detail displays without fetching', async t => {
