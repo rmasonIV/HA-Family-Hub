@@ -53,7 +53,7 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .quick-header{display:flex;align-items:center;gap:8px;padding:0 10px}
 .quick-header button{min-height:44px;border:0;background:transparent;color:inherit}
 #quick-toggle{flex:1;text-align:left;font-weight:600}
-.action-grid,.widget-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,175px),1fr));gap:12px}
+.action-grid,.widget-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .action-grid{padding:12px;border-top:1px solid #dce2e9}
 .quick-control{display:flex;align-items:center;gap:10px;min-height:64px;padding:10px;border:1px solid #cbd5e1;border-radius:9px;background:#f4f7fb;text-align:left;color:inherit}
 .quick-control[aria-pressed="true"]{background:#fff1bf}
@@ -154,7 +154,6 @@ button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;bac
   border-color:var(--fh-border);
 }
 small,.muted,.day-event summary .description-preview {color:var(--secondary-text-color,#627083)}
-.action-grid {grid-template-columns:repeat(4,minmax(0,1fr))}
 .quick-control {background:color-mix(in srgb,currentColor 5%,var(--fh-surface));overflow-wrap:anywhere}
 .quick-control[aria-pressed="true"],.view-toggle [aria-pressed="true"],
 .month-day[aria-expanded="true"],.day-heading:hover,.day-heading:focus-visible {background:var(--fh-tint)}
@@ -170,7 +169,7 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
 .calendar-legend[hidden] {display:none}
 .calendar-legend li {display:flex;align-items:center;gap:6px}
 .calendar-legend li::before {content:'';width:10px;height:10px;border-radius:50%;background:var(--event-color)}
-@container (max-width:620px) {.action-grid {grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:620px) {.action-grid,.widget-grid {grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style><main><section class="quick-actions" aria-label="Quick Actions" id="quick-actions">
   <div class="quick-header">
     <button type="button" id="quick-toggle" aria-controls="quick-controls" aria-expanded="true">Quick Actions</button>
