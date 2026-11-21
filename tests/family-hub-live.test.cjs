@@ -371,3 +371,66 @@ test('Week navigation honors Sunday start and keeps browsed weeks through refres
   await card.view.loadCalendar();
   assert.equal(find('[data-week-day="0"]').textContent, 'Sun 29');
 });
+
+test('briefings are opt-in, plain text, shared today and transient for future dates', async t => {
+  const calls = [];
+  const {card, find, hass} = setup(t, {
+    calendars:['calendar.family','calendar.school'], default_view:'month_details', daily_briefing:true
+  }, {
+    async callWS(message) {
+      calls.push(message);
+      if (calls.length > 1) throw new Error('Provider unavailable');
+      return {response:{status:'ok', day:'2026-11-21', text:'No events are scheduled.',
+        generated_at:'2026-11-21T02:00:00Z'}};
+    }
+  });
+  await tick();
+  assert.equal(find('#day-details .briefing').hidden, true);
+  hass.states['input_boolean.family_hub_briefing_enabled'] = {state:'on'};
+  hass.states['sensor.family_hub_daily_briefing'] = {state:'2026-11-20',attributes:{briefing:{
+    text:'<img src=x onerror=alert(1)>', generated_at:'2026-11-20T11:00:00Z'
+  }}};
+  card.hass = {...hass};
+  assert.equal(find('#day-details .briefing-text').textContent, '<img src=x onerror=alert(1)>');
+  assert.equal(find('#day-details .briefing-text img'), null);
+  assert.equal(find('#day-details time').hidden, false);
+  assert.equal(calls.length, 0);
+
+  find('[data-day="21"]').click();
+  assert.match(find('#day-events').textContent, /No events/);
+  find('#day-details .briefing-refresh').click();
+  await tick();
+  assert.equal(calls[0].return_response, true);
+  assert.equal(calls[0].service_data.briefing_date, '2026-11-21');
+  assert.match(find('#day-details .briefing-text').textContent, /No events are scheduled/);
+  find('#day-details .briefing-refresh').click();
+  await tick();
+  assert.match(find('#day-details .briefing-text').textContent, /could not be updated/);
+  assert.match(find('#day-events').textContent, /No events/);
+
+  find('[data-day="20"]').click();
+  assert.equal(find('#day-details .briefing-text').textContent, '<img src=x onerror=alert(1)>');
+  find('[data-day="19"]').click();
+  assert.equal(find('#day-details .briefing').hidden, true);
+
+  card.setConfig({calendars:['calendar.family'], default_view:'month_details'});
+  assert.equal(find('#day-details .briefing').hidden, true);
+});
+
+test('timed overlaps appear independently of AI and exclude adjoining and all-day events', async t => {
+  const timed = (summary, start, end) => ({
+    summary, start:{dateTime:`2026-11-20T${start}:00-06:00`},
+    end:{dateTime:`2026-11-20T${end}:00-06:00`}
+  });
+  const {find} = setup(t, {calendars:['calendar.family'], default_view:'month_details'}, {
+    async callApi() {
+      return [timed('Appointment', '08:00', '09:00'), timed('Practice','08:30','09:30'),
+        timed('Shopping','09:30','10:00'),
+        {summary:'Holiday',start:{date:'2026-11-20'},end:{date:'2026-11-21'}}];
+    }
+  });
+  await tick();
+  assert.equal(find('#day-details .briefing').hidden, true);
+  assert.equal(find('#day-details .overlaps li').textContent, 'Appointment overlaps Practice');
+  assert.equal(find('#day-details .overlaps ul').children.length, 1);
+});

@@ -25,6 +25,8 @@ Add **Family Hub Live** to a Home Assistant dashboard for Week and Month views, 
 
 Configure calendar and action entities in the visual editor. Use the code editor for full native card settings. Existing widget entity IDs still work, and `widget_layout: wide` keeps the full-width stack. See [Family Hub Live setup, settings, YAML examples, and troubleshooting](live/README.md).
 
+Enable [AI Daily Briefing](live/README.md#ai-daily-briefing) to summarize an allowlist of calendars with a local or cloud Home Assistant AI Task.
+
 ## A look around
 
 The Family Hub Live card renders these fictional calendars, actions, and weather forecasts. The preview supplies sample Home Assistant responses and stand-ins for native Quick Widgets. See the [capture instructions](live/README.md#screenshots-and-test-data) to regenerate the images.

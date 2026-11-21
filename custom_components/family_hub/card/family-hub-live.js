@@ -1,4 +1,7 @@
 const CARD = 'family-hub-live';
+const BRIEFING_SENSOR = 'sensor.family_hub_daily_briefing';
+const BRIEFING_SCRIPT = 'family_hub_generate_briefing';
+const BRIEFING_ENABLED = 'input_boolean.family_hub_briefing_enabled';
 const MAX_ITEMS = 4;
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const weekOffset = (date, firstDay) => (date.getUTCDay() - firstDay + DAYS.length) % DAYS.length;
@@ -122,6 +125,7 @@ function normalizeConfig(input, warnings = []) {
   return {
     ...config,
     calendars,
+    daily_briefing:config.daily_briefing === true,
     mealie:normalizeMealie(config.mealie, calendars, warnings),
     actions:list('actions', id => isEntityId(id) && Object.hasOwn(ACTIONS,domainOf(id)) && id, MAX_ITEMS),
     widgets:list('widgets', widgetKey, MAX_ITEMS),
@@ -195,6 +199,20 @@ function calendarTime(zone) {
     return format.format(start)+' – '+format.format(end);
   }};
 }
+
+const daySummaryMarkup = `
+  <section class="briefing" aria-label="Daily briefing" hidden>
+    <div class="detail-header">
+      <strong>Daily briefing</strong>
+      <button type="button" class="action-button briefing-refresh"></button>
+    </div>
+    <p class="briefing-text" role="status"></p>
+    <time class="briefing-time" hidden></time>
+  </section>
+  <section class="overlaps" aria-label="Potential overlaps" hidden>
+    <strong>Potential overlaps</strong>
+    <ul></ul>
+  </section>`;
 
 const markup = `<style>
 :host{font-family:system-ui,sans-serif;color:#223047;background:#f1f4f8}
@@ -273,7 +291,12 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .month-content:not(.has-details) .month-day{min-height:clamp(64px,9dvh,112px)}
 .day-details{display:flex;flex-direction:column;min-height:0;contain:size}
 .day-details[hidden]{display:none}
-#day-events{overflow-y:auto;overscroll-behavior:contain}
+#day-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.briefing,.overlaps{padding:8px;margin-bottom:8px;border:1px solid var(--divider-color,#c8d0d9);border-radius:8px}
+.briefing[hidden],.overlaps[hidden]{display:none}
+.briefing-text{margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.briefing-time{font-size:.8rem;color:var(--secondary-text-color,#526273)}
+.overlaps ul{margin:4px 0;padding-inline-start:1.25em;overflow-wrap:anywhere}
 .day-event{margin:6px 0;padding:10px}
 .day-event p{margin:4px 0;overflow-wrap:anywhere}
 .meal-recipe{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
@@ -395,7 +418,9 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
         <button class="action-button" type="button" id="close-day" aria-label="Close day details">×</button>
       </div>
       <div id="day-weather"></div>
-      <div id="day-events" tabindex="0" role="region" aria-label="Events for selected day"></div>
+      <div id="day-scroll" tabindex="0" role="region" aria-label="Schedule for selected day">
+        ${daySummaryMarkup}<div id="day-events"></div>
+      </div>
     </aside>
   </div>
 </div>
@@ -409,7 +434,8 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
     <h2 id="week-day-title"></h2>
     <form method="dialog"><button class="action-button" aria-label="Close day details">×</button></form>
   </div>
-  <div id="week-day-events"></div>
+  <div id="week-day-weather"></div>
+  ${daySummaryMarkup}<div id="week-day-events"></div>
 </dialog>
 <dialog id="forecast-details" aria-labelledby="forecast-title">
   <div class="detail-header">
@@ -428,6 +454,11 @@ function mount(root, host) {
   const weekDays = document.getElementById('week-days');
   const monthGrid = document.getElementById('month-grid');
   const dayDetails = document.getElementById('day-details');
+  const weekDetails = document.getElementById('week-day-details');
+  let weekDetailDate = null;
+  let briefingResponse;
+  let briefingPending;
+  let briefingError;
   const firstDay = host.config.week_start === 'sunday' ? 0 : 1;
   const weekdays = [...DAYS.slice(firstDay), ...DAYS.slice(0, firstDay)];
   let zone = host.hass?.config?.time_zone;
@@ -572,12 +603,15 @@ function mount(root, host) {
   });
   legend.hidden = !legendItems.length;
 
-  function eventsOn(date) {
+  function dayEvents(date) {
     const start = time.midnight(date);
     const next = time.midnight(addDays(date, 1));
     return calendarEvents.filter(event => (!selectedCalendar || event.calendarId === selectedCalendar)
-      && event.start < next && event.end > start)
-      .map(event => [event.summary, colors.get(event.calendarId), {time:time.when(event.start, event.end, date, event.allDay),
+      && event.start < next && event.end > start);
+  }
+
+  function eventsOn(date) {
+    return dayEvents(date).map(event => [event.summary, colors.get(event.calendarId), {time:time.when(event.start, event.end, date, event.allDay),
         location:event.location, description:event.description, calendarId:event.calendarId}]);
   }
 
@@ -721,6 +755,7 @@ function mount(root, host) {
   function updateEntities() {
     const hass = host.hass;
     if (!hass) return;
+    updateBriefings();
     for (const [id, item] of legendItems) {
       item.textContent = hass.states[id]?.attributes.friendly_name || id;
     }
@@ -833,6 +868,110 @@ function mount(root, host) {
   }
 
 
+  function renderDetailWeather(container, date) {
+    const forecast = date && forecasts.get(dateKey(date));
+    container.innerHTML = forecast ? forecastMarkup(date, null, forecast) : '';
+  }
+
+  function renderDaySchedule(panel, date, title, eventList) {
+    title.textContent = dateLabel(date, {weekday:'long', month:'short', day:'numeric'});
+    eventList.innerHTML = dayEventCards(eventsOn(date)) || '<p>No events</p>';
+    enrichDinnerEvents(eventList, date);
+
+    const start = +time.midnight(date);
+    const end = +time.midnight(addDays(date, 1));
+    const timed = new Map();
+    for (const event of dayEvents(date)) {
+      if (!event.allDay && event.start < event.end) {
+        timed.set(JSON.stringify([+event.start, +event.end, event.summary]), event);
+      }
+    }
+    const events = [...timed.values()];
+    const overlaps = panel.querySelector('.overlaps');
+    const list = overlaps.querySelector('ul');
+    list.replaceChildren();
+    for (let index = 0; index < events.length && list.children.length < 20; index++) {
+      const event = events[index];
+      for (let next = index + 1; next < events.length && list.children.length < 20; next++) {
+        const other = events[next];
+        if (Math.max(+event.start, +other.start, start) >= Math.min(+event.end, +other.end, end)) continue;
+        const item = window.document.createElement('li');
+        item.textContent = `${event.summary} overlaps ${other.summary}`;
+        list.append(item);
+      }
+    }
+    overlaps.hidden = !list.children.length;
+    renderBriefing(panel, date);
+  }
+
+  function renderBriefing(panel, date) {
+    const section = panel.querySelector('.briefing');
+    const {hass, config} = host;
+    const now = time.dayAt(Date.now());
+    section.hidden = !config.daily_briefing || !date || +date < +now ||
+      hass?.states[BRIEFING_ENABLED]?.state !== 'on';
+    if (section.hidden) return;
+    const day = dateKey(date);
+    const isToday = +date === +now;
+    const sensor = hass.states[BRIEFING_SENSOR];
+    const shared = isToday && sensor?.state === day ? sensor.attributes.briefing : null;
+    const local = briefingResponse?.day === day ? briefingResponse : null;
+    const data = isToday && Date.parse(shared?.generated_at) >= (Date.parse(local?.generated_at) || 0)
+      ? shared : local;
+    const text = typeof data?.text === 'string' ? data.text : '';
+    const running = Boolean(briefingPending) || hass.states['script.' + BRIEFING_SCRIPT]?.state === 'on';
+    const action = section.querySelector('button');
+    action.textContent = text ? 'Refresh briefing' : 'Generate briefing';
+    action.disabled = running;
+    action.onclick = () => requestBriefing(day);
+    const status = briefingPending === day ? 'Generating briefing…'
+      : briefingError === day ? 'Briefing could not be updated. Try again.'
+      : selectedCalendar ? 'Briefing uses the configured calendars, independent of this filter.' : '';
+    const paragraph = section.querySelector('.briefing-text');
+    const message = [text, status].filter(Boolean).join('\n');
+    if (paragraph.textContent !== message) paragraph.textContent = message;
+    const timestamp = section.querySelector('time');
+    timestamp.hidden = !text || !Number.isFinite(Date.parse(data?.generated_at));
+    if (!timestamp.hidden) {
+      timestamp.dateTime = data.generated_at;
+      timestamp.textContent = 'Generated ' + new Intl.DateTimeFormat(undefined, {
+        dateStyle:'short', timeStyle:'short', timeZone:zone
+      }).format(new Date(data.generated_at));
+    }
+  }
+
+  function updateBriefings() {
+    if (host.hass?.states[BRIEFING_ENABLED]?.state !== 'on') {
+      briefingResponse = undefined;
+      briefingError = undefined;
+    }
+    renderBriefing(dayDetails, monthView && selectedDay !== null ? monthDate(month, 0, selectedDay) : null);
+    renderBriefing(weekDetails, weekDetails.open ? weekDetailDate : null);
+  }
+
+  async function requestBriefing(day) {
+    if (briefingPending) return;
+    briefingPending = day;
+    briefingError = undefined;
+    updateBriefings();
+    try {
+      const result = await host.hass.callWS({
+        type:'call_service', domain:'script', service:BRIEFING_SCRIPT, return_response:true,
+        service_data:{briefing_date:day, force_refresh:true}
+      });
+      const response = result?.response;
+      if (response?.status !== 'ok' || response.day !== day || typeof response.text !== 'string') {
+        throw new Error('Briefing unavailable');
+      }
+      briefingResponse = response;
+    } catch {
+      briefingError = day;
+    } finally {
+      briefingPending = undefined;
+      updateBriefings();
+    }
+  }
+
   function renderCalendar(refreshEvents = true) {
     document.getElementById('week').hidden = monthView;
     document.getElementById('month').hidden = !monthView;
@@ -850,6 +989,13 @@ function mount(root, host) {
         <div class="events">${eventCards(eventsOn(date))}</div>
       </article>`;
       }).join('');
+      if (weekDetails.open && weekDetailDate) {
+        renderDetailWeather(document.getElementById('week-day-weather'), weekDetailDate);
+        if (refreshEvents) {
+          renderDaySchedule(weekDetails, weekDetailDate, document.getElementById('week-day-title'),
+            document.getElementById('week-day-events'));
+        }
+      }
       return;
     }
 
@@ -873,19 +1019,11 @@ function mount(root, host) {
     dayDetails.hidden = selectedDay === null;
     document.getElementById('month-content').classList.toggle('has-details', selectedDay !== null);
     const weather = document.getElementById('day-weather');
-    if (selectedDay === null) {
-      weather.replaceChildren();
-      return;
-    }
-    const date = monthDate(month, 0, selectedDay);
-    const forecast = forecasts.get(dateKey(date));
-    weather.innerHTML = forecast ? forecastMarkup(date, null, forecast) : '';
+    const date = selectedDay === null ? null : monthDate(month, 0, selectedDay);
+    renderDetailWeather(weather, date);
+    if (!date) return;
     if (refreshEvents) {
-      document.getElementById('day-title').textContent = dateLabel(date, {weekday:'short', month:'short', day:'numeric'});
-      const eventList = document.getElementById('day-events');
-      eventList.innerHTML = dayEventCards(eventsOn(date)) || '<p>No events</p>';
-      enrichDinnerEvents(eventList, date);
-      eventList.scrollTop = 0;
+      renderDaySchedule(dayDetails, date, document.getElementById('day-title'), document.getElementById('day-events'));
     }
   }
 
@@ -914,14 +1052,12 @@ function mount(root, host) {
     }
     const dayButton = event.target.closest('[data-week-day]');
     if (dayButton) {
-      const index = Number(dayButton.dataset.weekDay);
-      const dialog = document.getElementById('week-day-details');
-      document.getElementById('week-day-title').textContent = dateLabel(weekDates[index], {weekday:'long', month:'short', day:'numeric'});
-      const eventList = document.getElementById('week-day-events');
-      eventList.innerHTML = dayEventCards(eventsOn(weekDates[index])) || '<p>No events</p>';
-      enrichDinnerEvents(eventList, weekDates[index]);
-      dialog.showModal();
-      dialog.scrollTop = 0;
+      weekDetailDate = weekDates[Number(dayButton.dataset.weekDay)];
+      renderDetailWeather(document.getElementById('week-day-weather'), weekDetailDate);
+      renderDaySchedule(weekDetails, weekDetailDate, document.getElementById('week-day-title'),
+        document.getElementById('week-day-events'));
+      weekDetails.showModal();
+      weekDetails.scrollTop = 0;
       return;
     }
   });
@@ -938,6 +1074,7 @@ function mount(root, host) {
     if (!button) return;
     const day = Number(button.dataset.day);
     selectedDay = selectedDay === day ? null : day;
+    document.getElementById('day-scroll').scrollTop = 0;
     renderCalendar();
     monthGrid.querySelector(`[data-day="${day}"]`).focus({preventScroll:true});
     if (selectedDay !== null &&

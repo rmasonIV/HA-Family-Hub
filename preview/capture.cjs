@@ -4,7 +4,7 @@ const {join} = require('node:path');
 const {pathToFileURL} = require('node:url');
 const {chromium} = require('playwright');
 
-const output = join(__dirname, '../images/live');
+const output = process.env.FAMILY_HUB_CAPTURE_OUTPUT || join(__dirname, '../images/live');
 const url = pathToFileURL(join(__dirname, 'live.html')).href + '?capture';
 const desktop = {width:1440, height:950};
 
@@ -75,8 +75,26 @@ async function main() {
       await checkHeader(page, width);
       await page.locator('#month-view').click();
     }
+    await page.setViewportSize(desktop);
+    await page.goto(url + '&briefing');
+    await page.locator('#month-grid .event').first().waitFor();
+    await page.locator('[data-day="10"]').click();
+    assert.match(await page.locator('#day-details .briefing-text').textContent(), /Dentist appointment/i);
+    assert.match(await page.locator('#day-details .overlaps').textContent(), /overlaps/);
+    await capture('daily-briefing');
+
+    await page.locator('#week-view').click();
+    await page.locator('[data-week-day="3"]').click();
+    const week = page.locator('#week-day-details');
+    await week.locator('.briefing-time').waitFor();
+    assert.match(await week.locator('.briefing-text').textContent(), /Team practice/);
+    await week.getByRole('button', {name:'Close day details'}).click();
+    await page.locator('#month-view').click();
+    await page.locator('[data-day="14"]').click();
+    await page.getByRole('button', {name:'Generate briefing'}).click();
+    await page.getByText('No events are scheduled on the briefing calendars.').waitFor();
     assert.deepEqual(errors, []);
-    console.log('Captured five screenshots and checked Month and Week at desktop and phone widths.');
+    console.log('Captured six screenshots and checked shared day details, future generation and phone layouts.');
   } finally {
     await browser.close();
   }

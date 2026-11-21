@@ -18,6 +18,7 @@ To test a development checkout on a Home Assistant installation that already has
 | --- | --- | --- |
 | `calendars` | Empty list | Home Assistant `calendar.*` entity IDs, in legend order. |
 | `calendar_colors` | Rotating palette | Map calendar IDs to quoted six-digit hex colors. The same color appears in the legend, cells, and event details. |
+| `daily_briefing` | `false` | Show the opt-in AI briefing in day details. Requires the [briefing package](#ai-daily-briefing). |
 | `weather_entity` | Off | A `weather.*` entity supporting daily forecasts. Select **None** or omit the key to turn calendar weather off. |
 | `default_view` | `week` | Initial calendar view. Use `week`, `month` for the full grid, or `month_details` to open Month with today’s details visible. |
 | `week_start` | `monday` | First column in both views. Choose `monday` or `sunday`. |
@@ -34,6 +35,71 @@ In Week, use **‹** and **›** to move one week at a time. **This week** jumps
 In Month, today's date has its own marker and the selected date has a tinted cell. Forecast icons appear only for dates with data. Week, Month, and the detail pane use bundled static color icons from [Meteocons](https://github.com/basmilius/meteocons). Select a date to see its events and a full-width forecast panel with the condition, low, high, and temperature gradient. Close the pane with × or by selecting the same date again. The bar uses yellow for spans of at least 18°F or 10°C, and today's marker shows the current temperature when available. Week forecast icons open additional forecast details. Dates use Home Assistant's configured time zone, and temperature values and units come from Home Assistant.
 
 Calendar events refresh every five minutes while the card is open. The refresh updates today's highlight and advances an open pane that was showing today. A pane showing a different date stays on that date. Home Assistant sends daily forecast updates through its weather subscription, and entity updates move the current-temperature marker.
+
+## AI daily briefing
+
+Select a date in Week or Month to see its schedule. Day details show potential overlaps between timed events on visible calendars, even with AI disabled. Events that meet at an endpoint and all-day events are excluded from overlap checks. When enabled, the briefing and its generation time appear above the event list. The briefing uses its own calendar list, independent of the card's legend filter.
+
+### Install the Home Assistant package
+
+1. Set up one of the AI Task providers below. In **Developer tools → Actions**, run `ai_task.generate_data` with the provider's `ai_task.*` entity and a harmless prompt. Confirm that the response contains text in `data`. [Home Assistant Generate data action](https://www.home-assistant.io/actions/ai_task.generate_data/)
+2. Copy [family_hub_briefing.yaml](packages/family_hub_briefing.yaml) to `/config/packages/family_hub_briefing.yaml`. If you already use packages, use your existing packages directory and include. Otherwise add this to `configuration.yaml` under your existing `homeassistant:` section.
+
+   ```yaml
+   homeassistant:
+     packages: !include_dir_named packages
+   ```
+
+3. Edit the package's first script step. Set `calendar_ids` to the calendars you want summarized and `ai_entity` to the AI Task entity from step 1. Set `include_titles` and `include_locations` to suit your household. To change the default **05:00** Home Assistant local time, replace the quoted time on the `at: &briefing_time` line.
+4. Check configuration, restart Home Assistant, and turn on `input_boolean.family_hub_briefing_enabled` when ready. Keep the package entity IDs as supplied. In the Family Hub Live card's YAML editor, add `daily_briefing: true`.
+
+   ```yaml
+   type: custom:family-hub-live
+   default_view: month_details
+   calendars:
+     - calendar.family
+     - calendar.school
+   daily_briefing: true
+   ```
+
+### Provider YAML examples
+
+Add the provider through **Settings → Devices & services**, then add or select its data-generating AI Task. In the package, use **one** of the `ai_entity` examples below, replacing the example ID with the entity ID assigned by your installation. API credentials belong in the provider integration setup.
+
+```yaml
+# Ollama on your local network
+ai_entity: ai_task.ollama_ai_task
+```
+
+Give Home Assistant the address of your Ollama host. In the proof of concept on a Mac mini, `qwen3:8b` gave more useful summaries than `gemma3:4b`, with longer waits. Select the model in the Ollama AI Task settings. [Home Assistant Ollama integration](https://www.home-assistant.io/integrations/ollama/)
+
+```yaml
+# OpenAI
+ai_entity: ai_task.openai_ai_task
+```
+
+Set up the OpenAI integration with an OpenAI API key and API billing. A ChatGPT consumer or business subscription and OpenAI API access are billed separately. [Home Assistant OpenAI integration](https://www.home-assistant.io/integrations/openai_conversation/), [OpenAI billing](https://help.openai.com/en/articles/9039756-billing-settings-in-chatgpt-vs-platform)
+
+```yaml
+# Anthropic Claude
+ai_entity: ai_task.claude_ai_task
+```
+
+Use an Anthropic Console API key and API credits or billing. Claude subscriptions and Anthropic API billing are separate. Eligible plans may have API credits that can be claimed in Console. [Home Assistant Anthropic integration](https://www.home-assistant.io/integrations/anthropic/), [Anthropic billing](https://support.claude.com/en/articles/9876003-why-is-claude-api-usage-billed-separately-from-my-paid-claude-plan)
+
+```yaml
+# Google Gemini
+ai_entity: ai_task.google_ai_task
+```
+
+Use a Gemini API key and check the API project's quota and billing. Google AI consumer subscriptions and Gemini API project billing are separate. [Home Assistant Google Gemini integration](https://www.home-assistant.io/integrations/google_generative_ai_conversation/), [Gemini AI Task implementation](https://github.com/home-assistant/core/blob/dev/homeassistant/components/google_generative_ai_conversation/ai_task.py), [Gemini API billing](https://ai.google.dev/gemini-api/docs/billing)
+
+### Refresh, storage, and privacy
+
+- The package checks at the configured time and every 15 minutes after it. It hashes normalized briefing inputs, including the prompt version, and skips generation when today's inputs match the stored result. **Refresh briefing** requests a new result on demand. Matching requests within 30 seconds reuse the current result, and the script runs one request at a time.
+- A successful briefing for today is shared via `sensor.family_hub_daily_briefing` and survives Home Assistant restarts. Its live state clears at midnight, or at startup if the saved date has passed. Future-day briefings are generated on request and live in the open card's memory. Past days show calendar details. [Home Assistant template sensor restoration](https://www.home-assistant.io/integrations/template/#trigger-based-template-entities)
+- A successfully loaded empty day gets a fixed message without an AI call. If calendar fetching or generation fails, events remain usable and a manual request displays an error. Today's last successful briefing remains visible with its original timestamp.
+- Only allowlisted calendars contribute to the prompt. Event times and all-day flags are included. Titles default to on, locations default to off, and notes are omitted. For cloud providers, the included data leaves your Home Assistant. Shared briefing text is readable by Home Assistant users who can read the sensor. Turn off the helper to stop generation and clear the live sensor. The package excludes the sensor from Recorder history. Home Assistant's restore storage and provider retention still apply. [Home Assistant Recorder exclusions](https://www.home-assistant.io/integrations/recorder/#exclude)
 
 ## Mealie recipe details
 
@@ -154,7 +220,7 @@ widgets:
 
 Open [the interactive preview](../preview/live.html) from a checkout to try the real card with fictional June 2026 data. The browser uses fake Home Assistant calendar, forecast, and state responses. Native Home Assistant icons and Quick Widget cards have lightweight stand-ins, so the captures verify the Live card layout and widget placement. The pre-existing Kitchen concept in the interactive preview is hidden during captures.
 
-From the repository root, install the pinned screenshot dependency and its Chromium build, then regenerate the five README images.
+From the repository root, install the pinned screenshot dependency and its Chromium build, then regenerate the six preview images. Open the preview with `?briefing` to enable the fictional briefing fixture.
 
 ```sh
 npm ci --prefix preview
@@ -162,6 +228,8 @@ npm --prefix preview exec -- playwright install chromium
 npm run capture --prefix preview
 ```
 
-The harness checks Week and Month at desktop and phone widths, verifies the Mealie Dinner filter through a view switch, and writes PNGs to `images/live/`. The date, time zone, locale, viewport and device scale are fixed. Font rendering can differ by operating system. The harness opens a local file and blocks HTTP(S) requests.
+The harness checks Week and Month at desktop and phone widths, verifies the Mealie Dinner filter through a view switch, exercises current and future briefings, and writes PNGs to `images/live/`. The date, time zone, locale, viewport and device scale are fixed. Font rendering can differ by operating system. The harness opens a local file and blocks HTTP(S) requests.
+
+With Home Assistant Core 2026.11 installed in a test environment, run `python tests/check_briefing_package.py` to exercise the package with a temporary Local Calendar, synthetic AI responses, and a restart.
 
 See the [Mealie assessment and Kitchen V1 proposal](KITCHEN_V1.md) for the next design review.

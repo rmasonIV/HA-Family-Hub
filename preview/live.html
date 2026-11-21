@@ -147,12 +147,15 @@
     return {summary,location,start:{dateTime:start.toISOString()},end:{dateTime:end.toISOString()}};
   };
   const dinner = 'Lemon chickpea bowls';
+  const briefingPreview = new URLSearchParams(location.search).has('briefing');
   const calendars = {
     'calendar.family':[event(0,18,'Dinner with friends','Home'),event(2,9,'Dentist appointment','Oak Dental'),event(5,11,'Family outing','Community park'),event(-2,16,'Board games','Home'),event(9,18,'Pasta night','Home'),event(13,10,'Park cleanup','Community park'),event(20,15,'Picnic','Lakeside park')],
     'calendar.school':[event(1,8,'Library day','School library'),event(3,17,'Team practice','Field 2'),event(4,19,'Movie night','School gym'),event(11,9,'Field trip','Science museum'),event(17,10,'Art show','School gym')],
     'calendar.mealie_dinner': [event(3,18,dinner,'')],
   };
+  if (briefingPreview) calendars['calendar.family'].push(event(3,17,'Dentist appointment','Oak Dental'));
   const config = {
+    daily_briefing:briefingPreview,
     type:'custom:family-hub-live',ribbon_default:capture ? 'collapsed' : 'expanded',default_view:capture ? 'month' : 'month_details',week_start:'sunday',weather_entity:'weather.home',
     mealie:{calendar:'calendar.mealie_dinner',config_entry_id:'demo-entry',url:'https://mealie.example.test',group:'family'},
     calendars:Object.keys(calendars),actions:['light.living_room','cover.garage','switch.porch','script.movie_time'],
@@ -161,6 +164,14 @@
   const hass = {
     config:{time_zone:'America/Chicago',unit_system:{temperature:'°F'}},
     states:{
+      ...(briefingPreview ? {
+        'input_boolean.family_hub_briefing_enabled':state('Briefing enabled','on'),
+        'sensor.family_hub_daily_briefing':state('Daily briefing','2026-06-10',{
+          briefing:{text:'Team practice and the dentist appointment overlap at 5 PM. Dinner is lemon chickpea bowls at 6 PM.',
+            generated_at:'2026-06-10T10:00:00Z'}
+        }),
+        'script.family_hub_generate_briefing':state('Generate briefing','off')
+      } : {}),
       'calendar.family':state('Family','off'),
       'calendar.school':state('School','off'),
       'calendar.mealie_dinner':state('Mealie Dinner','off'),
@@ -175,6 +186,12 @@
     connection:{async subscribeMessage(callback) { callback({forecast}); return () => {}; }},
     async callWS(message) {
       const day = today.toISOString().slice(0,10);
+      if (message.domain === 'script') {
+        const requested = message.service_data.briefing_date;
+        return {response:{status:'ok',day:requested,text:requested === day
+          ? hass.states['sensor.family_hub_daily_briefing'].attributes.briefing.text
+          : 'No events are scheduled on the briefing calendars.',generated_at:today.toISOString()}};
+      }
       return {response:{mealplan: message.service_data.start_date === day
         ? [{mealplan_date:day,entry_type:'dinner',recipe:{name:dinner,slug:'lemon-chickpea-bowls'}}] : []}};
     },
