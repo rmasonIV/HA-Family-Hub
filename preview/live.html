@@ -11,6 +11,21 @@
   header h1{font-size:1.1rem;margin:0}header span{flex:1}
   header button{border:1px solid #8093ab;border-radius:6px;background:transparent;color:inherit;padding:8px;font:inherit;cursor:pointer}
   family-hub-live{display:block}
+  #kitchen{width:min(460px,calc(100% - 32px));box-sizing:border-box;padding:20px;border:1px solid var(--divider-color,#cbd5e1);border-radius:14px;background:var(--ha-card-background,#fff);color:inherit}
+  #kitchen::backdrop{background:#11182788}
+  #kitchen header{padding:0;justify-content:space-between}
+  #kitchen h2,#kitchen h3{margin:0}
+  .preview-note{color:var(--secondary-text-color,#526079);font-size:.86rem}
+  .kitchen-tabs{display:flex;gap:8px;margin:16px 0}
+  #kitchen button{border:1px solid var(--divider-color,#cbd5e1);border-radius:8px;background:transparent;color:inherit;padding:8px 12px;font:inherit;cursor:pointer;min-height:40px}
+  #kitchen button[aria-pressed="true"]{background:color-mix(in srgb,var(--primary-color,#4a90e2) 25%,transparent)}
+  .meal-preview{border:1px solid var(--divider-color,#cbd5e1);border-radius:10px;padding:12px}
+  .meal-preview p{margin:6px 0 12px}
+  #groceries-form{display:flex;gap:8px}
+  #groceries-form input{min-width:0;flex:1;border:1px solid var(--divider-color,#cbd5e1);border-radius:8px;padding:8px;color:inherit;background:transparent;font:inherit}
+  #grocery-items{list-style:none;padding:0;margin:12px 0 0}
+  #grocery-items label{display:flex;gap:10px;align-items:center;padding:8px 0;min-height:24px;border-bottom:1px solid var(--divider-color,#cbd5e1)}
+  #grocery-items input:checked + span{text-decoration:line-through;color:var(--secondary-text-color,#526079)}
 </style>
 </head>
 <body>
@@ -21,6 +36,33 @@
   <button type="button" id="startup" aria-pressed="false">Start collapsed</button>
 </header>
 <family-hub-live></family-hub-live>
+<dialog id="kitchen" aria-labelledby="kitchen-title">
+  <header>
+    <h2 id="kitchen-title">Kitchen</h2>
+    <form method="dialog"><button aria-label="Close Kitchen">×</button></form>
+  </header>
+  <p class="preview-note">Mealie preview with sample data. Changes stay in this preview.</p>
+  <div class="kitchen-tabs" role="group" aria-label="Kitchen section">
+    <button type="button" id="meals-tab" aria-controls="meals-panel" aria-pressed="true">Meals</button>
+    <button type="button" id="groceries-tab" aria-controls="groceries-panel" aria-pressed="false">Groceries</button>
+  </div>
+  <section id="meals-panel" aria-label="Meals">
+    <div class="meal-preview">
+      <h3>Tonight’s dinner</h3>
+      <p>Lemon chickpea bowls</p>
+      <details><summary>Open sample recipe</summary>
+        <p>Roast chickpeas with olive oil and paprika. Serve over rice with cucumber and a squeeze of lemon.</p>
+      </details>
+    </div>
+  </section>
+  <section id="groceries-panel" aria-label="Groceries" hidden>
+    <form id="groceries-form">
+      <input id="grocery-name" aria-label="New grocery item" placeholder="Add an item" required>
+      <button type="submit">Add</button>
+    </form>
+    <ul id="grocery-items" aria-label="Shopping list"></ul>
+  </section>
+</dialog>
 <script src="./family-hub-live.js"></script>
 <script>
   if (!customElements.get('ha-icon')) {
@@ -28,8 +70,7 @@
       static observedAttributes = ['icon'];
       set icon(value) { this.setAttribute('icon', value); }
       attributeChangedCallback(_, oldValue, value) {
-        this.textContent = {'mdi:lamps':'💡','mdi:garage':'🚙','mdi:weather-sunny':'☀️',
-          'mdi:weather-partly-cloudy':'🌤️','mdi:weather-rainy':'🌧️'}[value] ?? '◆';
+        this.textContent = {'mdi:lamps':'💡','mdi:garage':'🚙'}[value] ?? '◆';
       }
     });
   }
@@ -48,6 +89,44 @@
     }
   });
   const card = document.querySelector('family-hub-live');
+  const kitchen = document.querySelector('#kitchen');
+  const renderCard = () => {
+    card.setConfig(config);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Kitchen';
+    button.className = 'action-button';
+    button.setAttribute('aria-haspopup', 'dialog');
+    button.addEventListener('click', () => kitchen.showModal());
+    card.shadowRoot.querySelector('.view-toggle').after(button);
+  };
+  for (const section of ['meals', 'groceries']) {
+    document.querySelector('#'+section+'-tab').addEventListener('click', () => {
+      for (const name of ['meals', 'groceries']) {
+        document.querySelector('#'+name+'-panel').hidden = name !== section;
+        document.querySelector('#'+name+'-tab').setAttribute('aria-pressed', String(name === section));
+      }
+    });
+  }
+  function addGrocery(name) {
+    const item = document.createElement('li');
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    const text = document.createElement('span');
+    checkbox.type = 'checkbox';
+    text.textContent = name;
+    label.append(checkbox, text);
+    item.append(label);
+    document.querySelector('#grocery-items').append(item);
+  }
+  ['Lemons', 'Chickpeas', 'Cucumber'].forEach(addGrocery);
+  document.querySelector('#groceries-form').addEventListener('submit', event => {
+    event.preventDefault();
+    const field = document.querySelector('#grocery-name');
+    if (field.value.trim()) addGrocery(field.value.trim());
+    field.value = '';
+    field.focus();
+  });
   const state = (name, value, attributes = {}) => ({state:value, attributes:{friendly_name:name,...attributes}});
   const days = [0,1,2,3,4,5,6].map(index => {
     const date = new Date();
@@ -66,7 +145,8 @@
   };
   const calendars = {
     'calendar.family':[event(0,18,'Dinner with friends','Home'),event(2,9,'Dentist appointment','Oak Dental'),event(5,11,'Family outing','Community park')],
-    'calendar.school':[event(1,8,'Library day','School library'),event(3,17,'Team practice','Field 2'),event(4,19,'Movie night','School gym')]
+    'calendar.school':[event(1,8,'Library day','School library'),event(3,17,'Team practice','Field 2'),event(4,19,'Movie night','School gym')],
+    'calendar.mealie_dinner':[event(new Date().getDay(),18,'Lemon chickpea bowls','Kitchen')]
   };
   const config = {
     type:'custom:family-hub-live',default_view:'month_details',week_start:'sunday',weather_entity:'weather.home',
@@ -77,6 +157,7 @@
     states:{
       'calendar.family':state('Family','off'),
       'calendar.school':state('School','off'),
+      'calendar.mealie_dinner':state('Mealie Dinner','off'),
       'light.living_room':state('Living room light','off'),
       'cover.garage':state('Garage','closed'),
       'weather.home':state('Home forecast','sunny',{temperature:68,temperature_unit:'°F'}),
@@ -98,7 +179,7 @@
       card.hass = {...hass};
     }
   };
-  card.setConfig(config);
+  renderCard();
   card.hass = hass;
   document.querySelector('#theme').onclick = event => {
     event.currentTarget.setAttribute('aria-pressed', String(document.body.classList.toggle('dark')));
@@ -107,7 +188,7 @@
     const collapsed = config.ribbon_default !== 'collapsed';
     config.ribbon_default = collapsed ? 'collapsed' : 'expanded';
     event.currentTarget.setAttribute('aria-pressed', String(collapsed));
-    card.setConfig(config);
+    renderCard();
   };
 </script>
 </body>

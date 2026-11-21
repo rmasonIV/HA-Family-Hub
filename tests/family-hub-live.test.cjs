@@ -57,7 +57,7 @@ test('one HA-zone forecast feeds Week, Month and the selected day without losing
   assert.equal(callbacks.length, 1);
   assert.match(decodeURIComponent(calls[0]), /start=2026-11-01T05:00:00.000Z&end=2026-12-01T06:00:00.000Z/);
   assert.equal(find('.month-day[aria-current]').dataset.day, '20');
-  assert.equal(find('#month-grid ha-icon'), null);
+  assert.equal(find('#month-grid .forecast-icon'), null);
   find('[data-day="20"]').click();
   assert.match(find('#day-events').textContent, /Evening walk/);
   assert.match(find('#day-events').textContent, /8:00/);
@@ -66,9 +66,17 @@ test('one HA-zone forecast feeds Week, Month and the selected day without losing
     {datetime:'2026-11-21T02:00:00Z', condition:'partlycloudy', temperature:72, templow:50},
     {datetime:'2026-11-22', condition:'rainy', temperature:61}
   ]});
-  assert.equal(find('[data-day="20"] ha-icon').getAttribute('icon'), 'mdi:weather-partly-cloudy');
-  assert.equal(find('[data-day="21"] ha-icon'), null);
-  assert.equal(find('[data-day="22"] ha-icon').getAttribute('icon'), 'mdi:weather-rainy');
+  const partlyCloudy = find('[data-day="20"] .forecast-icon');
+  const rain = find('[data-day="22"] .forecast-icon');
+  assert.equal(partlyCloudy.alt, 'Partly cloudy');
+  assert.equal(rain.alt, 'Rainy');
+  assert.equal(find('[data-day="21"] .forecast-icon'), null);
+  assert.notEqual(partlyCloudy.src, rain.src);
+  const svg = Buffer.from(partlyCloudy.src.split(',')[1], 'base64').toString('utf8');
+  assert.match(svg, /<svg/);
+  assert.match(svg, /fill="#[0-9a-f]{6}"/i);
+  assert.equal(find('#day-weather .forecast-icon').src, partlyCloudy.src);
+  assert.equal(find('#day-weather .forecast-icon').alt, '');
   assert.equal(find('#day-events details').open, true);
   assert.equal(find('#day-weather .forecast-condition').textContent, 'Partly cloudy');
   assert.deepEqual([...find('#day-weather .forecast-temperatures').children].map(node => node.textContent.trim()),
@@ -83,10 +91,11 @@ test('one HA-zone forecast feeds Week, Month and the selected day without losing
   assert.equal(find('#day-weather .range'), null);
   find('#week-view').click();
   assert.ok(find('#week-days .wide-range'));
+  assert.equal(find('#week-days .forecast-icon').src, partlyCloudy.src);
   assert.equal(callbacks.length, 1);
   find('#month-view').click();
   callbacks[0]({forecast:[]});
-  assert.equal(find('#month-grid ha-icon'), null);
+  assert.equal(find('#month-grid .forecast-icon'), null);
   assert.equal(find('#day-weather').textContent, '');
   card.remove();
   await tick();
