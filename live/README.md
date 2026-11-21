@@ -31,7 +31,7 @@ Click a calendar legend button to show just that calendar. Click a different but
 
 In Week, use **‹** and **›** to move one week at a time. **This week** jumps back to the current week. The date range uses your configured Sunday or Monday start, and the card keeps the week you are browsing through a refresh or view switch. Forecast icons appear on dates with data from your provider.
 
-In Month, today's date has its own marker and the selected date has a tinted cell. Forecast icons appear only for dates with data. Select a date to see its events and a full-width forecast panel with the condition, low, high, and temperature gradient. Close the pane with × or by selecting the same date again. The bar uses yellow for spans of at least 18°F or 10°C, and today's marker shows the current temperature when available. Week forecast icons open additional forecast details. Dates use Home Assistant's configured time zone, and temperature values and units come from Home Assistant.
+In Month, today's date has its own marker and the selected date has a tinted cell. Forecast icons appear only for dates with data. Week, Month, and the detail pane use bundled static color icons from [Meteocons](https://github.com/basmilius/meteocons). Select a date to see its events and a full-width forecast panel with the condition, low, high, and temperature gradient. Close the pane with × or by selecting the same date again. The bar uses yellow for spans of at least 18°F or 10°C, and today's marker shows the current temperature when available. Week forecast icons open additional forecast details. Dates use Home Assistant's configured time zone, and temperature values and units come from Home Assistant.
 
 Calendar events refresh every five minutes while the card is open. The refresh updates today's highlight and advances an open pane that was showing today. A pane showing a different date stays on that date. Home Assistant sends daily forecast updates through its weather subscription, and entity updates move the current-temperature marker.
 
@@ -117,4 +117,4 @@ widgets:
 
 ## Screenshots and test data
 
-The main README's existing screenshots show earlier or upstream interfaces. Refresh captures once the feature branch is stable. Use the fictional data in `preview/live.html` to check layouts, then capture the real Home Assistant UI with synthetic calendars, weather, and devices to show the native cards. Keep real family events, names, event notes, and locations out of captures.
+The main README's existing screenshots show earlier or upstream interfaces. Refresh captures once the feature branch is stable. Use the fictional data in `preview/live.html` to check layouts or try the sample Kitchen recipe and grocery flow. The Kitchen preview uses local sample data. Then capture the real Home Assistant UI with synthetic calendars, weather, and devices to show the native cards. Keep real family events, names, event notes, and locations out of captures.
