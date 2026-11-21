@@ -385,8 +385,21 @@ test('briefings are opt-in, plain text, shared today and transient for future da
     }
   });
   await tick();
-  assert.equal(find('#day-details .briefing').hidden, true);
+  assert.equal(find('#day-details .briefing').hidden, false);
+  assert.match(find('#day-details .briefing-text').textContent, /setup is incomplete/);
+  assert.equal(find('#day-details .briefing-refresh').disabled, true);
+  hass.states['script.family_hub_generate_briefing'] = {state:'off'};
+  hass.states['input_boolean.family_hub_briefing_enabled'] = {state:'off'};
+  hass.states['sensor.family_hub_daily_briefing'] = {state:'empty',attributes:{}};
+  card.hass = {...hass};
+  assert.match(find('#day-details .briefing-text').textContent, /Briefing is off/);
   hass.states['input_boolean.family_hub_briefing_enabled'] = {state:'on'};
+  card.hass = {...hass};
+  assert.match(find('#day-details .briefing-text').textContent, /No briefing yet/);
+  assert.equal(find('#day-details .briefing-refresh').disabled, false);
+  hass.states['sensor.family_hub_daily_briefing'].attributes.failure = {day:'2026-11-20',status:'calendar_error'};
+  card.hass = {...hass};
+  assert.match(find('#day-details .briefing-text').textContent, /Check the calendar IDs/);
   hass.states['sensor.family_hub_daily_briefing'] = {state:'2026-11-20',attributes:{briefing:{
     text:'<img src=x onerror=alert(1)>', generated_at:'2026-11-20T11:00:00Z'
   }}};

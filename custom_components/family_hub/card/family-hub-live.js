@@ -201,9 +201,9 @@ function calendarTime(zone) {
 }
 
 const daySummaryMarkup = `
-  <section class="briefing" aria-label="Daily briefing" hidden>
+  <section class="briefing" aria-label="AI briefing" hidden>
     <div class="detail-header">
-      <strong>Daily briefing</strong>
+      <strong>AI briefing</strong>
       <button type="button" class="action-button briefing-refresh"></button>
     </div>
     <p class="briefing-text" role="status"></p>
@@ -908,27 +908,38 @@ function mount(root, host) {
     const section = panel.querySelector('.briefing');
     const {hass, config} = host;
     const now = time.dayAt(Date.now());
-    section.hidden = !config.daily_briefing || !date || +date < +now ||
-      hass?.states[BRIEFING_ENABLED]?.state !== 'on';
+    section.hidden = !config.daily_briefing || !date || +date < +now;
     if (section.hidden) return;
     const day = dateKey(date);
     const isToday = +date === +now;
-    const sensor = hass.states[BRIEFING_SENSOR];
+    const sensor = hass?.states[BRIEFING_SENSOR];
+    const script = hass?.states['script.' + BRIEFING_SCRIPT];
+    const helper = hass?.states[BRIEFING_ENABLED];
+    const setupStatus = !hass ? 'Waiting for Home Assistant…'
+      : !helper || !script || !sensor ? 'Briefing setup is incomplete. Check that the Home Assistant package is loaded.'
+      : helper.state === 'off' ? 'Briefing is off. Turn on the Family Hub briefing enabled helper.'
+      : helper.state !== 'on' || script.state === 'unavailable' || sensor.state === 'unavailable'
+        ? 'Briefing is unavailable. Check the Home Assistant package.' : '';
     const shared = isToday && sensor?.state === day ? sensor.attributes.briefing : null;
     const local = briefingResponse?.day === day ? briefingResponse : null;
     const data = isToday && Date.parse(shared?.generated_at) >= (Date.parse(local?.generated_at) || 0)
       ? shared : local;
-    const text = typeof data?.text === 'string' ? data.text : '';
-    const running = Boolean(briefingPending) || hass.states['script.' + BRIEFING_SCRIPT]?.state === 'on';
+    const text = !setupStatus && typeof data?.text === 'string' ? data.text : '';
+    const running = Boolean(briefingPending) || script?.state === 'on';
     const action = section.querySelector('button');
     action.textContent = text ? 'Refresh briefing' : 'Generate briefing';
-    action.disabled = running;
+    action.disabled = running || Boolean(setupStatus);
     action.onclick = () => requestBriefing(day);
-    const status = briefingPending === day ? 'Generating briefing…'
-      : briefingError === day ? 'Briefing could not be updated. Try again.'
-      : selectedCalendar ? 'Briefing uses the configured calendars, independent of this filter.' : '';
+    const failure = isToday && sensor?.attributes.failure?.day === day ? sensor.attributes.failure.status : null;
+    const generating = briefingPending === day || (isToday && script?.state === 'on' && !briefingPending);
+    const empty = isToday ? 'No briefing yet. Wait for the scheduled run or generate one now.'
+      : 'No briefing yet. Generate one for this date.';
+    const error = briefingError?.day === day ? briefingError.message : failure && briefingFailure(failure);
+    const status = setupStatus || (generating ? 'Generating briefing…' : error || (!text ? empty : ''));
+    const filter = !setupStatus && selectedCalendar
+      ? 'Briefing uses the configured calendars, independent of this filter.' : '';
     const paragraph = section.querySelector('.briefing-text');
-    const message = [text, status].filter(Boolean).join('\n');
+    const message = [text, status, filter].filter(Boolean).join('\n');
     if (paragraph.textContent !== message) paragraph.textContent = message;
     const timestamp = section.querySelector('time');
     timestamp.hidden = !text || !Number.isFinite(Date.parse(data?.generated_at));
@@ -949,6 +960,12 @@ function mount(root, host) {
     renderBriefing(weekDetails, weekDetails.open ? weekDetailDate : null);
   }
 
+  function briefingFailure(status) {
+    if (status === 'calendar_error') return 'Briefing could not be updated. Check the calendar IDs in the package.';
+    if (status === 'too_many_events') return 'Briefing could not be updated. This day has too many events.';
+    return 'Briefing could not be updated. Check the AI Task entity and Home Assistant logs, then try again.';
+  }
+
   async function requestBriefing(day) {
     if (briefingPending) return;
     briefingPending = day;
@@ -961,11 +978,12 @@ function mount(root, host) {
       });
       const response = result?.response;
       if (response?.status !== 'ok' || response.day !== day || typeof response.text !== 'string') {
-        throw new Error('Briefing unavailable');
+        briefingError = {day, message:briefingFailure(response?.status)};
+        return;
       }
       briefingResponse = response;
     } catch {
-      briefingError = day;
+      briefingError = {day, message:briefingFailure()};
     } finally {
       briefingPending = undefined;
       updateBriefings();
