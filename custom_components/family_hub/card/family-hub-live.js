@@ -1,12 +1,19 @@
 const CARD = 'family-hub-live';
 const MAX_ITEMS = 4;
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const weekOffset = (date, firstDay) => (date.getDay() - firstDay + DAYS.length) % DAYS.length;
-const WEATHER_ICONS = {
-  sunny:'☀️', clear_night:'🌙', 'clear-night':'🌙', partlycloudy:'🌤️', cloudy:'☁️',
-  rainy:'🌧️', pouring:'🌧️', lightning:'⛈️', 'lightning-rainy':'⛈️', snowy:'❄️',
-  'snowy-rainy':'🌨️', hail:'🌨️', fog:'🌫️', windy:'💨', 'windy-variant':'💨'
-};
+const weekOffset = (date, firstDay) => (date.getUTCDay() - firstDay + DAYS.length) % DAYS.length;
+const WEATHER_ICONS = new Map(Object.entries({
+  sunny:'sunny', clear_night:'night', 'clear-night':'night', partlycloudy:'partly-cloudy',
+  cloudy:'cloudy', rainy:'rainy', pouring:'pouring', lightning:'lightning',
+  'lightning-rainy':'lightning-rainy', snowy:'snowy', 'snowy-rainy':'snowy-rainy',
+  hail:'hail', fog:'fog', windy:'windy', 'windy-variant':'windy-variant', exceptional:'cloud-alert'
+}));
+function weatherIcon(forecast) {
+  const icon = WEATHER_ICONS.get(forecast.condition);
+  const condition = typeof forecast.condition === 'string' ? forecast.condition.replace(/[-_]/g, ' ') : 'Forecast';
+  return `<ha-icon icon="mdi:${icon ? (icon === 'cloud-alert' ? icon : 'weather-'+icon) : 'thermometer'}"
+    title="${escapeText(condition)}" aria-label="${escapeText(condition)}" role="img"></ha-icon>`;
+}
 const temperaturePosition = (current, high, low) =>
   Number.isFinite(current) && Number.isFinite(high) && Number.isFinite(low) && high >= low
     ? (high === low ? 50 : Math.min(100, Math.max(0, 100 * (high-current)/(high-low))))
@@ -35,15 +42,47 @@ const ACTIONS = {
 const domainOf = id => typeof id === 'string' ? id.split('.')[0] : '';
 const escapeText = value => String(value ?? '').replace(/[&<>"']/g, character =>
   ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[character]);
-const addDays = (date, count) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + count);
-const endpoint = value => value.dateTime ? new Date(value.dateTime) : new Date(value.date + 'T00:00:00');
-const clock = new Intl.DateTimeFormat(undefined, {hour:'numeric', minute:'2-digit'});
-const when = (start, end, date, allDay) => {
-  if (allDay) return 'All day';
-  const onDay = t => t.toDateString() === date.toDateString();
-  return onDay(start) && onDay(end) ? clock.format(start) + ' – ' + clock.format(end)
-    : [start, end].map(t => t.toLocaleString(undefined, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'})).join(' – ');
-};
+// Calendar dates are wall dates carried in UTC fields, so day arithmetic is independent of the browser zone.
+const addDays = (date, count) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + count));
+const monthDate = (date, offset = 0, day = 1) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth()+offset, day));
+const dateKey = date => date.toISOString().slice(0, 10);
+const dateLabel = (date, options) => date.toLocaleDateString(undefined, {...options, timeZone:'UTC'});
+function calendarTime(zone) {
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone:zone, year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23'
+    });
+  } catch {
+    return calendarTime(undefined);
+  }
+  const timeZone = parts.resolvedOptions().timeZone;
+  const wallTime = instant => {
+    const fields = Object.fromEntries(parts.formatToParts(instant).map(({type,value}) => [type, Number(value)]));
+    return Date.UTC(fields.year, fields.month-1, fields.day, fields.hour, fields.minute, fields.second);
+  };
+  const dayAt = instant => new Date(Math.floor(wallTime(instant)/86400000)*86400000);
+  const midnights = new Map();
+  const midnight = date => {
+    const wall = date.getTime();
+    if (midnights.has(wall)) return midnights.get(wall);
+    const estimate = 2*wall - wallTime(wall);
+    const adjusted = estimate + wall - wallTime(estimate);
+    // If a clock change skipped midnight, use the later side of the gap.
+    const instant = new Date(adjusted + wall - wallTime(adjusted) === estimate ? Math.max(estimate, adjusted) : adjusted);
+    if (midnights.size >= 100) midnights.clear();
+    midnights.set(wall, instant);
+    return instant;
+  };
+  const time = new Intl.DateTimeFormat(undefined, {timeZone,hour:'numeric',minute:'2-digit'});
+  const datetime = new Intl.DateTimeFormat(undefined, {timeZone,month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  return {dayAt,midnight,when(start,end,date,allDay) {
+    if (allDay) return 'All day';
+    const format = +dayAt(start) === +date && +dayAt(end) === +date ? time : datetime;
+    return format.format(start)+' – '+format.format(end);
+  }};
+}
 
 const markup = `<style>
 :host{font-family:system-ui,sans-serif;color:#223047;background:#f1f4f8}
@@ -86,6 +125,11 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .weather{display:grid;justify-items:center;gap:3px;font-size:.75rem;font-variant-numeric:tabular-nums}
 .weather-button{border:0;background:transparent;padding:0;width:44px;height:44px;font-size:1.25rem}
 .range{position:relative;width:6px;height:42px;border-radius:4px;background:linear-gradient(to top,#3b82f6,#ef4444)}
+.weather.horizontal{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}
+.weather.horizontal .range{width:48px;height:6px;background:linear-gradient(to right,#ef4444,#3b82f6)}
+.weather.horizontal .wide-range{background:linear-gradient(to right,#ef4444,#facc15,#3b82f6)}
+.weather.horizontal .current{top:50%;left:var(--position)}
+#day-weather:empty{display:none}
 .range.wide-range{background:linear-gradient(to top,#3b82f6,#facc15,#ef4444)}
 .current[hidden]{display:none}
 .quick-control ha-icon{flex:none;--mdc-icon-size:24px}
@@ -118,7 +162,9 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .settings-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
 .widget-grid.wide{grid-template-columns:minmax(0,1fr)}
 .month-day .event{padding:3px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.72rem}
-.month-day-top{display:flex;justify-content:space-between;gap:1px}
+.month-day-top{display:flex;justify-content:space-between;align-items:center;gap:1px;width:100%;min-width:0}
+.month-day-top ha-icon{--mdc-icon-size:clamp(12px,3cqi,18px);flex:none}
+.month-day[aria-current="date"] .month-date{background:var(--primary-color,#4a90e2);color:var(--text-primary-color,#fff);border-radius:6px;padding-inline:2px;font-weight:700}
 .day-details{border:1px solid #dce2e9;border-radius:9px;padding:10px;align-self:stretch}
 .detail-header h3{font-size:1rem}
 dialog{width:min(380px,calc(100% - 32px));border:1px solid #cbd5e1;border-radius:12px;padding:22px;color:inherit}
@@ -169,8 +215,9 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
 }
 .calendar-legend {display:flex;flex-wrap:wrap;gap:6px 14px;padding:0;margin:0 0 12px;list-style:none;font-size:.85rem}
 .calendar-legend[hidden] {display:none}
-.calendar-legend li {display:flex;align-items:center;gap:6px}
-.calendar-legend li::before {content:'';width:10px;height:10px;border-radius:50%;background:var(--event-color)}
+.calendar-legend button {display:flex;align-items:center;gap:6px;border:1px solid transparent;border-radius:16px;padding:4px 8px;background:transparent;color:inherit;text-align:start}
+.calendar-legend button[aria-pressed="true"]{border-color:var(--event-color);background:var(--fh-tint)}
+.calendar-legend button::before {content:'';width:10px;height:10px;border-radius:50%;background:var(--event-color)}
 @container (max-width:620px) {.action-grid,.widget-grid {grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style><main><section class="quick-actions" aria-label="Quick Actions" id="quick-actions">
   <div class="quick-header">
@@ -186,7 +233,7 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
     <button class="action-button" id="month-view" type="button" aria-pressed="false">Month</button>
   </div>
 </div>
-<p class="muted" id="calendar-status" role="status"></p><ul class="calendar-legend" id="calendar-legend" aria-label="Calendar legend"></ul><div id="week"><p id="weather-status" class="muted" role="status" hidden></p><div class="days" id="week-days"></div></div>
+<p class="muted" id="calendar-status" role="status"></p><ul class="calendar-legend" id="calendar-legend" aria-label="Filter by calendar"></ul><p id="weather-status" class="muted" role="status" hidden></p><div id="week"><div class="days" id="week-days"></div></div>
 <div id="month" hidden>
   <div class="month-top">
     <h3 id="month-title"></h3>
@@ -202,6 +249,7 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
         <h3 id="day-title"></h3>
         <button class="action-button" type="button" id="close-day" aria-label="Close day details">×</button>
       </div>
+      <div id="day-weather"></div>
       <div id="day-events" tabindex="0" role="region" aria-label="Events for selected day"></div>
     </aside>
   </div>
@@ -234,25 +282,26 @@ function mount(root, host) {
   const dayDetails = document.getElementById('day-details');
   const firstDay = host.config.week_start === 'sunday' ? 0 : 1;
   const weekdays = [...DAYS.slice(firstDay), ...DAYS.slice(0, firstDay)];
-  const today = new Date();
-  const weekStart = addDays(today, -weekOffset(today, firstDay));
-  const weekDates = weekdays.map((_, index) => addDays(weekStart, index));
+  let zone = host.hass?.config?.time_zone;
+  let time = calendarTime(zone);
+  let today = time.dayAt(Date.now());
+  let weekStart = addDays(today, -weekOffset(today, firstDay));
+  let weekDates = weekdays.map((_, index) => addDays(weekStart, index));
   let monthView = host.config.default_view === 'month';
-  let month = new Date(today.getFullYear(), today.getMonth(), 1);
+  let month = monthDate(today);
   let selectedDay = null;
   let calendarEvents = [];
+  let selectedCalendar = null;
   const forecasts = new Map();
   let subscription;
   const weatherStatus = document.getElementById('weather-status');
 
-  function redrawWeek() {
-    if (monthView) return;
-    const active = root.activeElement;
-    const forecastIndex = active?.dataset.forecast;
-    const dayIndex = active?.dataset.weekDay;
-    renderCalendar();
-    if (forecastIndex !== undefined) weekDays.querySelector(`[data-forecast="${forecastIndex}"]`)?.focus();
-    if (dayIndex !== undefined) weekDays.querySelector(`[data-week-day="${dayIndex}"]`)?.focus();
+  function redrawCalendar(refreshEvents = true) {
+    const active = root.activeElement?.dataset;
+    renderCalendar(refreshEvents);
+    if (active?.forecast !== undefined) weekDays.querySelector(`[data-forecast="${active.forecast}"]`)?.focus();
+    if (active?.weekDay !== undefined) weekDays.querySelector(`[data-week-day="${active.weekDay}"]`)?.focus();
+    if (active?.day !== undefined) monthGrid.querySelector(`[data-day="${active.day}"]`)?.focus({preventScroll:true});
   }
 
   function stopWeather() {
@@ -265,22 +314,28 @@ function mount(root, host) {
   function startWeather() {
     const id = host.config.weather_entity;
     const connection = host.hass?.connection;
-    if (!host.isConnected || !id || !connection || subscription?.connection === connection) return;
+    if (!host.isConnected || !id || !connection || (subscription?.connection === connection && subscription.zone === zone)) return;
     stopWeather();
-    const current = {connection};
+    const current = {connection, zone};
+    redrawCalendar(false);
     subscription = current;
     weatherStatus.textContent = 'Loading daily forecast…';
     weatherStatus.hidden = false;
     Promise.resolve().then(() => connection.subscribeMessage(message => {
       if (subscription !== current) return;
       forecasts.clear();
-      for (const forecast of message.forecast ?? []) {
-        const date = new Date(forecast.datetime);
-        if (Number.isFinite(date.getTime())) forecasts.set(date.toDateString(), forecast);
+      for (const forecast of Array.isArray(message?.forecast) ? message.forecast : []) {
+        if (!forecast || typeof forecast.datetime !== 'string') continue;
+        const instant = Date.parse(forecast.datetime);
+        if (!Number.isFinite(instant) || (!forecast.condition && !Number.isFinite(forecast.temperature)
+          && !Number.isFinite(forecast.templow))) continue;
+        const key = /^\d{4}-\d{2}-\d{2}$/.test(forecast.datetime)
+          ? forecast.datetime : dateKey(time.dayAt(instant));
+        forecasts.set(key, forecast);
       }
       weatherStatus.textContent = forecasts.size ? '' : 'Daily forecast unavailable.';
       weatherStatus.hidden = Boolean(forecasts.size);
-      redrawWeek();
+      redrawCalendar(false);
     }, {type:'weather/subscribe_forecast', entity_id:id, forecast_type:'daily'}))
       .then(unsubscribe => {
         if (subscription === current) current.unsubscribe = unsubscribe;
@@ -290,28 +345,30 @@ function mount(root, host) {
         if (subscription !== current) return;
         weatherStatus.textContent = 'Daily forecast unavailable for the selected weather entity.';
         weatherStatus.hidden = false;
-        redrawWeek();
+        redrawCalendar(false);
       });
   }
 
   function forecastMarkup(date, index, forecast) {
     const high = forecast.temperature;
     const low = forecast.templow;
-    const today = date.toDateString() === new Date().toDateString();
+    const isToday = +date === +today;
     const current = host.hass?.states[host.config.weather_entity]?.attributes.temperature;
-    const position = today ? temperaturePosition(current, high, low) : null;
+    const position = isToday ? temperaturePosition(current, high, low) : null;
     const unit = host.hass?.states[host.config.weather_entity]?.attributes.temperature_unit
       ?? host.hass?.config?.unit_system?.temperature;
     const wide = high - low >= (unit === '°F' ? 18 : 10);
-    const icon = WEATHER_ICONS[forecast.condition] ?? '🌡️';
-    return `<div class="weather">
-      <button class="weather-button" type="button" data-forecast="${index}" aria-haspopup="dialog"
-        aria-label="Forecast for ${weekdays[index]} ${date.getDate()}">${icon}</button>
-      ${Number.isFinite(high) ? `<span aria-label="High ${high} degrees">${high}°</span>` : ''}
+    const icon = weatherIcon(forecast);
+    const temperatureLabel = unit ? ' '+escapeText(unit) : ' degrees';
+    const heading = index === null ? icon : `<button class="weather-button" type="button" data-forecast="${index}" aria-haspopup="dialog"
+        aria-label="Forecast for ${weekdays[index]} ${date.getUTCDate()}">${icon}</button>`;
+    return `<div class="weather${index === null ? ' horizontal' : ''}" aria-label="Daily forecast">
+      ${heading}
+      ${Number.isFinite(high) ? `<span aria-label="High ${high}${temperatureLabel}">${high}${escapeText(unit ?? '°')}</span>` : ''}
       ${Number.isFinite(high) && Number.isFinite(low) ? `<span class="range ${wide ? 'wide-range' : ''}" aria-hidden="true">
-        ${today ? `<span class="current" data-high="${high}" data-low="${low}" ${position === null ? 'hidden' : ''} style="--position:${position ?? 50}%"></span>` : ''}
+        ${isToday ? `<span class="current" data-high="${high}" data-low="${low}" ${position === null ? 'hidden' : ''} style="--position:${position ?? 50}%"></span>` : ''}
       </span>` : ''}
-      ${Number.isFinite(low) ? `<span aria-label="Low ${low} degrees">${low}°</span>` : ''}
+      ${Number.isFinite(low) ? `<span aria-label="Low ${low}${temperatureLabel}">${low}${escapeText(unit ?? '°')}</span>` : ''}
     </div>`;
   }
   let request = 0;
@@ -334,39 +391,70 @@ function mount(root, host) {
   const colors = new Map(host.config.calendars.map((id, index) => [id, calendarColor(host.config, id, index)]));
   const legendItems = Array.from(colors, ([id, color]) => {
     const item = window.document.createElement('li');
-    item.style.setProperty('--event-color', color);
-    item.textContent = id;
+    const button = window.document.createElement('button');
+    button.type = 'button';
+    button.style.setProperty('--event-color', color);
+    button.textContent = id;
+    button.setAttribute('aria-pressed', 'false');
+    button.onclick = () => {
+      selectedCalendar = selectedCalendar === id ? null : id;
+      for (const [calendar, control] of legendItems) {
+        control.setAttribute('aria-pressed', String(calendar === selectedCalendar));
+      }
+      redrawCalendar();
+    };
+    item.append(button);
     legend.append(item);
-    return [id, item];
+    return [id, button];
   });
   legend.hidden = !legendItems.length;
 
   function eventsOn(date) {
-    const next = addDays(date, 1);
-    return calendarEvents.filter(event => event.start < next && event.end > date)
-      .map(event => [event.summary, colors.get(event.calendarId), {time:when(event.start, event.end, date, event.allDay),
+    const start = time.midnight(date);
+    const next = time.midnight(addDays(date, 1));
+    return calendarEvents.filter(event => (!selectedCalendar || event.calendarId === selectedCalendar)
+      && event.start < next && event.end > start)
+      .map(event => [event.summary, colors.get(event.calendarId), {time:time.when(event.start, event.end, date, event.allDay),
         location:event.location, description:event.description}]);
   }
 
   async function loadCalendar() {
     const current = ++request;
     const {hass, config} = host;
-    renderCalendar();
+    const nextZone = hass?.config?.time_zone;
+    if (nextZone !== zone) {
+      zone = nextZone;
+      time = calendarTime(zone);
+      calendarEvents = [];
+    }
+    const newToday = time.dayAt(Date.now());
+    if (+today !== +newToday) {
+      if (+month === +monthDate(today) && +month !== +monthDate(newToday)) {
+        month = monthDate(newToday);
+        selectedDay = null;
+      }
+      today = newToday;
+      weekStart = addDays(today, -weekOffset(today, firstDay));
+      weekDates = weekdays.map((_, index) => addDays(weekStart, index));
+    }
+    redrawCalendar();
+    startWeather();
     if (!hass) return;
     if (!config.calendars.length) {
       calendarStatus.textContent = 'Choose calendars in the card editor.';
       return;
     }
     const weekEnd = addDays(weekStart, 7);
-    const monthEnd = new Date(month.getFullYear(), month.getMonth()+1, 1);
+    const monthEnd = monthDate(month, 1);
     const start = new Date(Math.min(weekStart, month));
     const end = new Date(Math.max(weekEnd, monthEnd));
     // Fetch each visible range independently to avoid pulling events between distant months.
     const ranges = month < weekEnd && monthEnd > weekStart ? [[start,end]] : [[weekStart,weekEnd],[month,monthEnd]];
     calendarStatus.textContent = 'Loading events…';
     const results = await Promise.allSettled(config.calendars.flatMap(id => ranges.map(async ([from,to]) => {
-      const query = new URLSearchParams({start:from.toISOString(), end:to.toISOString()});
+      const query = new URLSearchParams({start:time.midnight(from).toISOString(), end:time.midnight(to).toISOString()});
       const events = await hass.callApi('GET', 'calendars/'+encodeURIComponent(id)+'?'+query);
+      const endpoint = value => value.dateTime ? new Date(value.dateTime) : time.midnight(new Date(value.date));
       return events.filter(event => event.start && event.end).map(event => ({...event, calendarId:id,
         start:endpoint(event.start), end:endpoint(event.end), allDay:Boolean(event.start.date)}));
     })));
@@ -374,10 +462,7 @@ function mount(root, host) {
     calendarEvents = results.flatMap(result => result.status === 'fulfilled' ? result.value : [])
       .sort((a,b) => a.start-b.start);
     calendarStatus.textContent = results.some(result => result.status === 'rejected') ? 'Some calendars could not load.' : '';
-    const focusedDay = root.activeElement?.dataset;
-    renderCalendar();
-    if (focusedDay?.day) monthGrid.querySelector('[data-day="'+focusedDay.day+'"]')?.focus();
-    if (focusedDay?.weekDay) weekDays.querySelector('[data-week-day="'+focusedDay.weekDay+'"]')?.focus();
+    redrawCalendar();
   }
 
   const actionButtons = host.config.actions.map(id => {
@@ -396,7 +481,7 @@ function mount(root, host) {
     controls.append(button);
     let pending = false;
     button.onclick = async () => {
-      if (pending || !host.hass?.states[id]) return;
+      if (pending || button.disabled || !host.hass?.states[id]) return;
       if (domain === 'cover' && !window.confirm('Open '+label.firstChild.textContent+'?')) return;
       pending = true;
       button.disabled = true;
@@ -473,16 +558,16 @@ function mount(root, host) {
   }
 
 
-  function renderCalendar() {
+  function renderCalendar(refreshEvents = true) {
     document.getElementById('week').hidden = monthView;
     document.getElementById('month').hidden = !monthView;
     document.getElementById('week-view').setAttribute('aria-pressed', String(!monthView));
     document.getElementById('month-view').setAttribute('aria-pressed', String(monthView));
     if (!monthView) {
       weekDays.innerHTML = weekDates.map((date, index) => {
-        const forecast = forecasts.get(date.toDateString());
+        const forecast = forecasts.get(dateKey(date));
         return `<article class="day">
-        <button type="button" class="day-heading" data-week-day="${index}" aria-haspopup="dialog" aria-label="View events for ${weekdays[index]} ${date.getDate()}">${weekdays[index]} ${date.getDate()}</button>
+        <button type="button" class="day-heading" data-week-day="${index}" aria-haspopup="dialog" aria-label="View events for ${weekdays[index]} ${date.getUTCDate()}">${weekdays[index]} ${date.getUTCDate()}</button>
         <div class="day-body ${forecast ? '' : 'events-only'}">
           ${forecast ? forecastMarkup(date, index, forecast) : ''}
           <div class="events">${eventCards(eventsOn(date))}</div>
@@ -492,33 +577,38 @@ function mount(root, host) {
       return;
     }
 
-    const year = month.getFullYear();
-    const monthNumber = month.getMonth();
     const offset = weekOffset(month, firstDay);
-    const dayCount = new Date(year, monthNumber+1, 0).getDate();
-    const getDayEvents = day => eventsOn(new Date(year, monthNumber, day));
-    document.getElementById('month-title').textContent = month.toLocaleDateString('en-US', {month:'long', year:'numeric'});
+    const dayCount = monthDate(month, 1, 0).getUTCDate();
+    document.getElementById('month-title').textContent = dateLabel(month, {month:'long', year:'numeric'});
     monthGrid.innerHTML = weekdays.map(day => `<div class="weekday">${day}</div>`).join('') +
       '<span aria-hidden="true"></span>'.repeat(offset) +
       Array.from({length:dayCount}, (_, index) => {
         const day = index+1;
-        const events = getDayEvents(day);
+        const date = monthDate(month, 0, day);
+        const events = eventsOn(date);
+        const forecast = forecasts.get(dateKey(date));
         return `<button type="button" class="month-day" data-day="${day}" aria-controls="day-details"
-          aria-expanded="${day === selectedDay}">
-          <span class="month-day-top">${day}</span>
+          aria-expanded="${day === selectedDay}"${+date === +today ? ' aria-current="date"' : ''}>
+          <span class="month-day-top"><span class="month-date">${day}</span>${forecast ? weatherIcon(forecast) : ''}</span>
           ${eventCards(events.slice(0, 3), 'span')}
           ${events.length > 3 ? `<small>+${events.length - 3} more</small>` : ''}
         </button>`;
       }).join('');
     dayDetails.hidden = selectedDay === null;
     document.getElementById('month-content').classList.toggle('has-details', selectedDay !== null);
-    if (selectedDay !== null) {
-      document.getElementById('day-title').textContent = new Date(year, monthNumber, selectedDay)
-        .toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
-      const events = getDayEvents(selectedDay);
+    const weather = document.getElementById('day-weather');
+    if (selectedDay === null) {
+      weather.replaceChildren();
+      return;
+    }
+    const date = monthDate(month, 0, selectedDay);
+    const forecast = forecasts.get(dateKey(date));
+    weather.innerHTML = forecast ? forecastMarkup(date, null, forecast) : '';
+    if (refreshEvents) {
+      document.getElementById('day-title').textContent = dateLabel(date, {weekday:'short', month:'short', day:'numeric'});
       const eventList = document.getElementById('day-events');
+      eventList.innerHTML = dayEventCards(eventsOn(date)) || '<p>No events</p>';
       eventList.scrollTop = 0;
-      eventList.innerHTML = dayEventCards(events) || '<p>No events</p>';
     }
   }
 
@@ -527,19 +617,18 @@ function mount(root, host) {
     const weatherButton = event.target.closest('[data-forecast]');
     if (weatherButton) {
       const date = weekDates[Number(weatherButton.dataset.forecast)];
-      const forecast = forecasts.get(date.toDateString());
+      const forecast = forecasts.get(dateKey(date));
       if (!forecast) return;
       const entity = host.hass?.states[host.config.weather_entity];
       const unit = entity?.attributes.temperature_unit ?? host.hass?.config?.unit_system?.temperature ?? '°';
       const temperature = value => Number.isFinite(value) ? `${value} ${unit}` : null;
       const high = temperature(forecast.temperature);
       const low = temperature(forecast.templow);
-      const today = date.toDateString() === new Date().toDateString();
-      const current = today ? temperature(entity?.attributes.temperature) : null;
-      document.getElementById('forecast-title').textContent = date.toLocaleDateString(undefined,
-        {weekday:'long', month:'short', day:'numeric'});
+      const isToday = +date === +today;
+      const current = isToday ? temperature(entity?.attributes.temperature) : null;
+      document.getElementById('forecast-title').textContent = dateLabel(date, {weekday:'long', month:'short', day:'numeric'});
       document.getElementById('forecast-summary').textContent = [
-        forecast.condition?.replaceAll('-', ' '), high && `High ${high}`,
+        typeof forecast.condition === 'string' && forecast.condition.replace(/[-_]/g, ' '), high && `High ${high}`,
         low && `Low ${low}`, current && `Current ${current}`,
         Number.isFinite(forecast.precipitation_probability) && `Rain chance ${forecast.precipitation_probability}%`
       ].filter(Boolean).join(' · ') || 'Forecast unavailable';
@@ -550,8 +639,7 @@ function mount(root, host) {
     if (dayButton) {
       const index = Number(dayButton.dataset.weekDay);
       const dialog = document.getElementById('week-day-details');
-      document.getElementById('week-day-title').textContent = weekDates[index]
-        .toLocaleDateString('en-US', {weekday:'long', month:'short', day:'numeric'});
+      document.getElementById('week-day-title').textContent = dateLabel(weekDates[index], {weekday:'long', month:'short', day:'numeric'});
       document.getElementById('week-day-events').innerHTML = dayEventCards(eventsOn(weekDates[index])) || '<p>No events</p>';
       dialog.showModal();
       dialog.scrollTop = 0;
@@ -586,13 +674,13 @@ function mount(root, host) {
   });
   for (const [id, direction] of [['previous-month', -1], ['next-month', 1]]) {
     document.getElementById(id).addEventListener('click', () => {
-      month = new Date(month.getFullYear(), month.getMonth()+direction, 1);
+      month = monthDate(month, direction);
       selectedDay = null;
       calendarEvents = [];
       loadCalendar();
     });
   }
-  return {loadCalendar, updateEntities, startWeather, stopWeather};
+  return {loadCalendar, updateEntities, startWeather, stop() { request++; stopWeather(); }};
 }
 
 class FamilyHubLiveEditor extends HTMLElement {
@@ -768,7 +856,7 @@ class FamilyHubLive extends HTMLElement {
     if (config.weather_entity && !/^weather\.[a-z0-9_]+$/.test(config.weather_entity)) {
       throw new Error('Select a weather entity for Family Hub Week weather');
     }
-    this.view?.stopWeather();
+    this.view?.stop();
     this.config = {
       ...config, calendars:entities('calendars',id => domainOf(id) === 'calendar'),
       actions:entities('actions',id => Object.hasOwn(ACTIONS,domainOf(id)),MAX_ITEMS),
@@ -785,19 +873,20 @@ class FamilyHubLive extends HTMLElement {
   get hass() { return this._hass; }
   set hass(hass) {
     const first = !this._hass;
+    const zoneChanged = this._hass?.config?.time_zone !== hass?.config?.time_zone;
     this._hass = hass;
     this.view?.updateEntities();
-    this.view?.startWeather();
-    if (first) this.view?.loadCalendar();
+    if (first || zoneChanged) this.view?.loadCalendar();
+    else this.view?.startWeather();
   }
 
   connectedCallback() {
-    this.view?.startWeather();
+    this.view?.loadCalendar();
     this.refreshTimer = setInterval(() => this.view?.loadCalendar(), 5 * 60 * 1000);
   }
   disconnectedCallback() {
     clearInterval(this.refreshTimer);
-    this.view?.stopWeather();
+    this.view?.stop();
   }
   getCardSize() { return 8; }
 }
