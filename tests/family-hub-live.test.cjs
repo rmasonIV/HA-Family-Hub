@@ -269,23 +269,27 @@ const mealieSettings = {
 };
 const dinnerDay = '2026-11-20';
 const dinnerCalendarEvent = summary => ({summary, start:{date:dinnerDay}, end:{date:'2026-11-21'}});
-const dinnerRecipe = (name, slug, image = 'cache-key') =>
-  ({entry_type:'dinner', mealplan_date:dinnerDay, recipe:{name, slug, recipe_id:'recipe-uuid', image}});
+const dinnerRecipe = (name, slug, image = 'cache-key', description = null) =>
+  ({entry_type:'dinner', mealplan_date:dinnerDay, recipe:{name, slug, recipe_id:'recipe-uuid', image, description}});
 
 test('Mealie enriches only existing dinner events and shares the lookup between Month and Week', async t => {
   const requests = [];
+  const description = 'Roasted chickpeas & <b>lemon</b> over rice.';
   const {find, window} = setup(t, {
-    default_view:'month_details', calendars:['calendar.mealie_dinner','calendar.family'], mealie:mealieSettings
+    default_view:'month_details', calendars:['calendar.mealie_dinner','calendar.family'], mealie:mealieSettings, daily_briefing:true
   }, {
     async callApi(_, path) {
       return path.includes('calendar.mealie_dinner')
-        ? ['Chickpea bowls', 'Takeout', 'Soup', 'Ambiguous'].map(dinnerCalendarEvent)
+        ? [
+          {...dinnerCalendarEvent('Chickpea bowls'), end:{date:dinnerDay}, description},
+          ...['Takeout', 'Soup', 'Ambiguous'].map(dinnerCalendarEvent)
+        ]
         : [dinnerCalendarEvent('Chickpea bowls')];
     },
     async callWS(message) {
       requests.push(message);
       return {response:{mealplan:[
-        dinnerRecipe('Chickpea bowls', 'chickpea-bowls'),
+        dinnerRecipe('Chickpea bowls', 'chickpea-bowls', 'new + cover', description),
         dinnerRecipe('Soup', 'soup', null),
         dinnerRecipe('Ambiguous', 'first'),
         dinnerRecipe('Ambiguous', 'second'),
@@ -306,13 +310,26 @@ test('Mealie enriches only existing dinner events and shares the lookup between 
   const photo = list.querySelector('.meal-recipe img');
   assert.equal(link.href, 'https://meals.example.test/mealie/g/family/r/chickpea-bowls');
   assert.equal(link.target, '_blank');
-  assert.equal(photo.src, 'https://meals.example.test/mealie/api/media/recipes/recipe-uuid/images/min-original.webp');
+  const preview = list.querySelector('.meal-recipe-description');
+  assert.equal(link.closest('article').querySelector('strong').textContent, 'Chickpea bowls');
+  assert.equal(preview.textContent, description);
+  assert.equal(preview.childElementCount, 0);
+  assert.equal(list.querySelectorAll('.meal-recipe-description').length, 1);
+  assert.equal(link.closest('article').querySelector('.description-preview'), null);
+  assert.equal(link.closest('article').querySelector('.description-full').textContent, description);
+  assert.equal(list.querySelectorAll('.meal-recipe img').length, 1);
+  assert.equal(photo.src, 'https://meals.example.test/mealie/api/media/recipes/recipe-uuid/images/min-original.webp?version=new+%2B+cover');
   photo.dispatchEvent(new window.Event('error'));
-  assert.ok(!photo.isConnected && link.isConnected);
+  assert.ok(photo.isConnected);
+  assert.equal(photo.src, 'https://meals.example.test/mealie/api/media/recipes/recipe-uuid/images/original.webp?version=new+%2B+cover');
+  photo.dispatchEvent(new window.Event('error'));
+  assert.ok(!photo.isConnected && link.isConnected && preview.isConnected);
   find('#week-view').click();
   find('[data-week-day="4"]').click();
   await tick();
   assert.equal(find('#week-day-events .meal-recipe a').href, link.href);
+  assert.equal(find('#week-day-events .meal-recipe-description').textContent, description);
+  assert.equal(find('#week-day-details .briefing').hidden, false);
   assert.equal(requests.length, 1);
 });
 

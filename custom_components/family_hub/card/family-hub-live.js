@@ -358,7 +358,9 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .day-event{margin:6px 0;padding:10px}
 .day-event p{margin:4px 0;overflow-wrap:anywhere}
 .meal-recipe{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
-.meal-recipe img{inline-size:88px;block-size:64px;border-radius:6px;object-fit:cover}
+.meal-recipe-copy{flex:1 1 160px;min-width:0}
+.day-event .meal-recipe-description{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;white-space:normal}
+.meal-recipe img{inline-size:112px;block-size:84px;max-inline-size:100%;border-radius:6px;object-fit:cover}
 .meal-recipe a{color:var(--link-text-color,var(--primary-text-color,inherit));font-weight:600;padding-block:8px}
 .meal-recipe:empty{display:none}
 .event-meta{display:flex;align-items:baseline;gap:6px}
@@ -774,8 +776,14 @@ function mount(root, host) {
       const query = new URLSearchParams({start:time.midnight(from).toISOString(), end:time.midnight(to).toISOString()});
       const events = await hass.callApi('GET', 'calendars/'+encodeURIComponent(id)+'?'+query);
       const endpoint = value => value.dateTime ? new Date(value.dateTime) : time.midnight(new Date(value.date));
-      return events.filter(event => event.start && event.end).map(event => ({...event, calendarId:id,
-        start:endpoint(event.start), end:endpoint(event.end), allDay:Boolean(event.start.date)}));
+      return events.filter(event => event.start && event.end).map(event => {
+        const allDay = Boolean(event.start.date);
+        // HA's Mealie calendar can give an all-day dinner the same start and end date.
+        const end = id === config.mealie?.calendar && allDay && event.start.date === event.end.date
+          ? time.midnight(addDays(new Date(event.start.date), 1))
+          : endpoint(event.end);
+        return {...event, calendarId:id, start:endpoint(event.start), end, allDay};
+      });
     })));
     if (current !== request) return;
     calendarEvents = results.flatMap(result => result.status === 'fulfilled' ? result.value : [])
@@ -956,15 +964,39 @@ function mount(root, host) {
       link.rel = 'noopener noreferrer';
       link.textContent = 'Open in Mealie ↗';
       link.setAttribute('aria-label', `Open ${title} in Mealie (new tab)`);
-      if (recipe.image && isPathSegment(recipe.recipe_id)) {
+      if (typeof recipe.image === 'string' && recipe.image.trim() && isPathSegment(recipe.recipe_id)) {
         const photo = window.document.createElement('img');
         photo.alt = '';
         photo.referrerPolicy = 'no-referrer';
-        photo.addEventListener('error', () => photo.remove(), {once:true});
-        photo.src = new URL(`api/media/recipes/${recipe.recipe_id}/images/min-original.webp`, base).href;
+        const imageDirectory = new URL(`api/media/recipes/${recipe.recipe_id}/images/`, base);
+        const imageUrl = filename => {
+          const url = new URL(filename, imageDirectory);
+          url.searchParams.set('version', recipe.image);
+          return url.href;
+        };
+        photo.addEventListener('error', () => {
+          photo.addEventListener('error', () => photo.remove(), {once:true});
+          photo.src = imageUrl('original.webp');
+        }, {once:true});
+        photo.src = imageUrl('min-original.webp');
         container.append(photo);
       }
-      container.append(link);
+      const copy = window.document.createElement('div');
+      copy.className = 'meal-recipe-copy';
+      if (typeof recipe.description === 'string' && recipe.description.trim()) {
+        const description = window.document.createElement('p');
+        description.className = 'meal-recipe-description';
+        description.textContent = recipe.description.trim();
+        copy.append(description);
+
+        // HA may also include this text in the event notes. Keep the full notes expandable.
+        const notes = container.parentElement.querySelector('details');
+        if (notes?.querySelector('.description-full').textContent.trim() === description.textContent) {
+          notes.querySelector('.description-preview').remove();
+        }
+      }
+      copy.append(link);
+      container.append(copy);
     }
   }
 
