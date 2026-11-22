@@ -484,3 +484,69 @@ test('integration settings enable briefings without card YAML or package entitie
   await tick();
   assert.equal(unsubscribed, true);
 });
+
+test('calendar appearance is optional, independent and safe to reconfigure', async t => {
+  const config = {
+    type:'custom:family-hub-live', calendars:['calendar.family','calendar.school'],
+    calendar_colors:{'calendar.family':'#a43560'}, default_view:'month_details',
+    actions:['light.office'], widgets:['light.office']
+  };
+  const {card, find} = setup(t, config);
+  await tick();
+  assert.equal(find('.calendar-surround'), null);
+  assert.equal(find('.calendar').parentElement.id, 'layout');
+
+  for (const [frame, seasonal_accent] of [
+    ['retro_tv','off'], ['off','christmas_retro'], ['retro_tv','christmas_retro']
+  ]) {
+    card.setConfig({...config, appearance:{frame, seasonal_accent}});
+    await tick();
+    const surround = find('.calendar-surround');
+    assert.equal(surround.dataset.frame, frame);
+    assert.equal(surround.dataset.seasonalAccent, seasonal_accent);
+    assert.equal(surround.querySelectorAll('.tv-antenna').length, frame === 'off' ? 0 : 1);
+    assert.equal(surround.querySelectorAll('.christmas-holly').length, seasonal_accent === 'off' ? 0 : 2);
+    assert.ok([...surround.querySelectorAll('svg')].every(svg => svg.getAttribute('aria-hidden') === 'true'));
+    assert.equal(find('.calendar').parentElement, surround);
+    assert.equal(find('#widget-panel').parentElement.id, 'layout');
+    assert.ok(find('#quick-controls .quick-control'));
+    assert.match(find('#day-events').textContent, /Evening walk/);
+    assert.equal(find('#month-grid [style*="#a43560"]').style.getPropertyValue('--event-color'), '#a43560');
+    find('#week-view').click();
+    assert.equal(find('#week').hidden, false);
+    find('#next-week').click();
+    await tick();
+    find('#month-view').click();
+    assert.equal(find('#month').hidden, false);
+  }
+
+  card.setConfig({...config, appearance:{frame:'constructor', seasonal_accent:'christmas_retro'}});
+  assert.equal(find('.calendar-surround').dataset.frame, 'off');
+  assert.match(find('#config-status').textContent, /appearance\.frame/);
+  card.setConfig({...config, appearance:['retro_tv']});
+  assert.equal(find('.calendar-surround'), null);
+  assert.match(find('#config-status').textContent, /appearance must be a mapping/);
+  card.setConfig({...config, appearance:{frame:'off', seasonal_accent:'off'}});
+  assert.equal(find('.calendar-surround'), null);
+  assert.equal(find('#config-status').hidden, true);
+});
+
+test('visual editor changes one appearance setting and preserves the other card options', t => {
+  const {card, hass} = setup(t, {});
+  const editor = card.constructor.getConfigElement();
+  const config = {appearance:{frame:'retro_tv', seasonal_accent:'christmas_retro'}, daily_briefing:true};
+  editor.setConfig(config);
+  editor.hass = hass;
+  const [frame, accent] = [...editor.querySelectorAll('fieldset')].find(
+    fieldset => fieldset.querySelector('legend').textContent === 'Calendar appearance'
+  ).querySelectorAll('select');
+  assert.equal(frame.value, 'retro_tv');
+  assert.equal(accent.value, 'christmas_retro');
+  let saved;
+  editor.addEventListener('config-changed', event => { saved = event.detail.config; });
+  frame.value = 'off';
+  frame.onchange();
+  assert.equal(saved.appearance.frame, 'off');
+  assert.equal(saved.appearance.seasonal_accent, 'christmas_retro');
+  assert.equal(saved.daily_briefing, true);
+});

@@ -85,6 +85,22 @@ function normalizeMealie(value, calendars, warnings) {
   }
 }
 
+const APPEARANCE_OPTIONS = {
+  frame:{off:'Off',retro_tv:'Retro TV'},
+  seasonal_accent:{off:'Off',christmas_retro:'Retro Christmas'}
+};
+
+function normalizeAppearance(value, warnings) {
+  if (value != null && !isRecord(value)) warnings.push('appearance must be a mapping.');
+  const settings = isRecord(value) ? value : {};
+  return Object.fromEntries(Object.entries(APPEARANCE_OPTIONS).map(([key, options]) => {
+    const choice = settings[key];
+    if (typeof choice === 'string' && Object.hasOwn(options, choice)) return [key, choice];
+    if (choice != null) warnings.push('appearance.'+key+' must be '+Object.keys(options).join(' or ')+'.');
+    return [key, 'off'];
+  }));
+}
+
 function normalizeConfig(input, warnings = []) {
   const {title: _legacyTitle, ...config} = isRecord(input) ? input : {};
   const list = (key, validate, limit = Infinity) => {
@@ -126,6 +142,7 @@ function normalizeConfig(input, warnings = []) {
     ...config,
     calendars,
     daily_briefing:typeof config.daily_briefing === "boolean" ? config.daily_briefing : undefined,
+    appearance:normalizeAppearance(config.appearance, warnings),
     mealie:normalizeMealie(config.mealie, calendars, warnings),
     actions:list('actions', id => isEntityId(id) && Object.hasOwn(ACTIONS,domainOf(id)) && id, MAX_ITEMS),
     widgets:list('widgets', widgetKey, MAX_ITEMS),
@@ -214,7 +231,24 @@ const daySummaryMarkup = `
     <ul></ul>
   </section>`;
 
-const markup = `<style>
+const tvAntenna = `<svg class="tv-antenna" viewBox="0 0 100 36" aria-hidden="true" focusable="false">
+  <path d="M50 33L12 5m38 28L87 5" fill="none" stroke="#9b7950" stroke-width="2" stroke-linecap="round"/>
+  <path d="M50 31L13 5m37 26L86 5" fill="none" stroke="#dfc697" stroke-width="1"/>
+  <circle cx="12" cy="5" r="3" fill="#c1a06b"/>
+  <circle cx="87" cy="5" r="3" fill="#c1a06b"/>
+  <path d="M39 36a11 8 0 0 1 22 0Z" fill="#a38253"/>
+</svg>`;
+
+const christmasHolly = `<svg class="christmas-holly" viewBox="0 0 54 18" aria-hidden="true" focusable="false">
+  <path d="M29 12C22 4 15 2 5 3c3 2 4 4 2 6 4-1 7 0 7 3 5-1 10 0 15 0Z" fill="#38604d"/>
+  <path d="M24 12C32 5 39 2 50 4c-4 2-4 4-2 6-5-1-7 0-8 3-5-2-10-1-16-1Z" fill="#597857"/>
+  <path d="M11 6l16 6L44 7" fill="none" stroke="#99a67a" stroke-width=".8"/>
+  <g fill="#a64840"><circle cx="23" cy="11" r="3"/><circle cx="30" cy="10" r="3"/><circle cx="27" cy="15" r="2.8"/></g>
+</svg>`;
+
+const markup = ({frame, seasonal_accent:accent}) => {
+  const decorated = frame !== 'off' || accent !== 'off';
+  return `<style>
 :host{font-family:system-ui,sans-serif;color:#223047;background:#f1f4f8}
 *{box-sizing:border-box}main{width:100%;padding:clamp(6px,1vw,14px);container-type:inline-size}
 header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
@@ -376,12 +410,65 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
 @container (max-width:620px) {.action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container (max-width:480px) {.widget-grid[data-count]{grid-template-columns:minmax(0,1fr)}}
 .widget-grid.wide[data-count]{grid-template-columns:minmax(0,1fr)}
+/* The bezel uses the card width. The existing calendar adapts to the space inside it. */
+.calendar-surround {
+  position:relative;
+  min-inline-size:0;
+  container-type:inline-size;
+  --rim:clamp(4px,1.1cqi,16px);
+}
+.calendar-surround > svg {position:absolute;display:block;pointer-events:none}
+.calendar-surround[data-frame="retro_tv"] {
+  --antenna-height:clamp(18px,3.2cqi,36px);
+  margin-block-start:var(--antenna-height);
+  padding:var(--rim);
+  border:1px solid #4c3025;
+  border-radius:clamp(12px,2cqi,25px);
+  background:
+    repeating-linear-gradient(2deg,#341a101c 0 1px,transparent 2px 5px,#e8af741a 6px,transparent 8px 11px),
+    linear-gradient(112deg,#67402e,#986344 35%,#784b34 67%,#563527);
+  box-shadow:inset 0 1px #cc97676e,0 2px 4px #0003;
+}
+.calendar-surround[data-frame="retro_tv"] > .calendar {
+  border:clamp(2px,.45cqi,6px) solid #eee0c1;
+  box-shadow:0 0 0 1px #bb9964;
+}
+.tv-antenna {
+  inset-block-end:100%;
+  inset-inline:0;
+  margin-inline:auto;
+  block-size:var(--antenna-height);
+}
+.calendar-surround[data-seasonal-accent="christmas_retro"] {
+  --accent-rail:clamp(12px,1.8cqi,22px);
+  padding-block-start:var(--accent-rail);
+}
+.calendar-surround[data-frame="off"][data-seasonal-accent="christmas_retro"] {
+  border:1px solid #54735f;
+  border-radius:13px;
+}
+.christmas-holly {
+  inset-block-start:1px;
+  inset-inline-start:max(10px,var(--rim));
+  block-size:calc(var(--accent-rail) - 2px);
+}
+.christmas-holly + .christmas-holly {
+  inset-inline-start:auto;
+  inset-inline-end:max(10px,var(--rim));
+  transform:scaleX(-1);
+}
+@container (max-width:380px) {
+  .calendar-surround .month-day-top .forecast-icon {inline-size:12px;block-size:12px}
+}
 </style><main><p id="config-status" class="muted" role="status" hidden></p><section class="quick-actions" aria-label="Quick Actions" id="quick-actions">
   <div class="quick-header">
     <button type="button" id="quick-toggle" aria-controls="quick-controls" aria-expanded="true">Quick Actions</button>
   </div>
   <div class="action-grid" id="quick-controls"></div></section>
 <div class="layout" id="layout">
+${decorated ? `<div class="calendar-surround" data-frame="${frame}" data-seasonal-accent="${accent}">
+  ${frame === 'retro_tv' ? tvAntenna : ''}
+  ${accent === 'christmas_retro' ? christmasHolly.repeat(2) : ''}` : ''}
 <section class="calendar" aria-label="Family calendar">
 <div class="calendar-header">
   <ul class="calendar-legend" id="calendar-legend" aria-label="Filter by calendar"></ul>
@@ -425,6 +512,7 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
   </div>
 </div>
 </section>
+${decorated ? '</div>' : ''}
 <section class="side" id="widget-panel" aria-labelledby="widgets-title">
 <h3 id="widgets-title">Quick Widgets</h3>
 <div class="widget-grid"></div></section>
@@ -445,6 +533,7 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
   <p id="forecast-summary"></p>
 </dialog>
 </main>`;
+};
 
 function mount(root, host) {
   const document = {getElementById: id => root.getElementById(id)};
@@ -1342,6 +1431,26 @@ class FamilyHubLiveEditor extends HTMLElement {
     }
     this.append(defaults);
 
+    const appearance = document.createElement('fieldset');
+    const appearanceHeading = document.createElement('legend');
+    appearanceHeading.textContent = 'Calendar appearance';
+    appearance.append(appearanceHeading);
+    for (const [key, title] of [['frame','Frame'], ['seasonal_accent','Seasonal accent']]) {
+      const row = document.createElement('p');
+      const label = document.createElement('label');
+      const picker = document.createElement('select');
+      for (const [value, name] of Object.entries(APPEARANCE_OPTIONS[key])) picker.add(new Option(name, value));
+      picker.value = normalized.appearance[key];
+      picker.onchange = () => save('appearance', {
+        ...(isRecord(this.config.appearance) ? this.config.appearance : {}),
+        [key]:picker.value
+      });
+      label.append(title+' ', picker);
+      row.append(label);
+      appearance.append(row);
+    }
+    this.append(appearance);
+
     const widgetLabel = document.createElement('label');
     const widgetPicker = document.createElement('select');
     widgetPicker.add(new Option('Side by side', 'grid'));
@@ -1373,7 +1482,7 @@ class FamilyHubLive extends HTMLElement {
       return [key, previous && !previous.failed ? previous : {config:widgetConfig(entry)}];
     }));
     const root = this.shadowRoot ?? this.attachShadow({mode:'open'});
-    root.innerHTML = markup;
+    root.innerHTML = markup(this.config.appearance);
     this.view = mount(root,this);
     this.view.updateEntities();
     this.view.loadCalendar();

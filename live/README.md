@@ -27,6 +27,8 @@ To test a development checkout on a Home Assistant installation that already has
 | `ribbon_default` | `expanded` | Starts Quick Actions `expanded` or `collapsed`. The header toggles it for the current visit. |
 | `widgets` | Empty list | Up to four unique top-level built-in card configurations or entity IDs. |
 | `widget_layout` | `grid` | Responsive side-by-side cards. Use `wide` for a full-width stack at every size. |
+| `appearance.frame` | `off` | `retro_tv` surrounds the calendar with a woodgrain TV frame. |
+| `appearance.seasonal_accent` | `off` | `christmas_retro` adds static holly sprigs to the upper perimeter. |
 
 Click a calendar legend button to show just that calendar. Click a different button to switch calendars, or click the selected button again to restore all calendars. The choice follows you between Week and Month and applies to their day details. The card starts with all calendars visible.
 
@@ -35,6 +37,24 @@ In Week, use **‹** and **›** to move one week at a time. **This week** jumps
 In Month, today's date has its own marker and the selected date has a tinted cell. Forecast icons appear only for dates with data. Week, Month, and the detail pane use bundled static color icons from [Meteocons](https://github.com/basmilius/meteocons). Select a date to see its events and a full-width forecast panel with the condition, low, high, and temperature gradient. Close the pane with × or by selecting the same date again. The bar uses yellow for spans of at least 18°F or 10°C, and today's marker shows the current temperature when available. Week forecast icons open additional forecast details. Dates use Home Assistant's configured time zone, and temperature values and units come from Home Assistant.
 
 Calendar events refresh every five minutes while the card is open. The refresh updates today's highlight and advances an open pane that was showing today. A pane showing a different date stays on that date. Home Assistant sends daily forecast updates through its weather subscription, and entity updates move the current-temperature marker.
+
+## Calendar appearance
+
+Choose **Frame** and **Seasonal accent** under **Calendar appearance** in the visual editor, or edit the card YAML.
+
+```yaml
+type: custom:family-hub-live
+calendars:
+  - calendar.family
+default_view: month
+appearance:
+  frame: retro_tv
+  seasonal_accent: christmas_retro
+```
+
+Set `seasonal_accent: off` to keep the TV frame year-round, or use `frame: off` for holly with a thin green outline. Omitting `appearance` turns both options off. Seasonal accents are selected manually. The decoration scales with the card width, and Quick Actions and Quick Widgets sit outside it.
+
+In the pull request preview, append `?frame=retro_tv&seasonal_accent=christmas_retro` to the preview URL to see both options with sample events.
 
 ## AI daily briefing
 

@@ -88,7 +88,8 @@
       return widget;
     }
   });
-  const capture = new URLSearchParams(location.search).has('capture');
+  const params = new URLSearchParams(location.search);
+  const capture = params.has('capture');
   if (capture) {
     document.querySelector('header h1').textContent = 'Family Calendar';
     document.querySelectorAll('body > header button, body > header span').forEach(element => element.hidden = true);
@@ -156,6 +157,7 @@
   if (briefingPreview) calendars['calendar.family'].push(event(3,17,'Dentist appointment','Oak Dental'));
   const config = {
     daily_briefing:briefingPreview,
+    appearance:{frame:params.get('frame'), seasonal_accent:params.get('seasonal_accent')},
     type:'custom:family-hub-live',ribbon_default:capture ? 'collapsed' : 'expanded',default_view:capture ? 'month' : 'month_details',week_start:'sunday',weather_entity:'weather.home',
     mealie:{calendar:'calendar.mealie_dinner',config_entry_id:'demo-entry',url:'https://mealie.example.test',group:'family'},
     calendars:Object.keys(calendars),actions:['light.living_room','cover.garage','switch.porch','script.movie_time'],
