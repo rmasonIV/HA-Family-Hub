@@ -337,7 +337,7 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .meal-recipe{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
 .meal-recipe-copy{flex:1 1 160px;min-width:0}
 .day-event .meal-recipe-description{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;white-space:normal}
-.meal-recipe img{inline-size:88px;block-size:64px;border-radius:6px;object-fit:cover}
+.meal-recipe img{inline-size:112px;block-size:84px;max-inline-size:100%;border-radius:6px;object-fit:cover}
 .meal-recipe a{color:var(--link-text-color,var(--primary-text-color,inherit));font-weight:600;padding-block:8px}
 .meal-recipe:empty{display:none}
 .event-meta{display:flex;align-items:baseline;gap:6px}
