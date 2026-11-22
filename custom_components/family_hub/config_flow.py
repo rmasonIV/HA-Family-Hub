@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import timedelta
+from datetime import time, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +21,7 @@ from . import (
     _overrides_to_text,
     _parse_overrides,
     _restore_settings_history_snapshot,
+    briefing,
     store as chores_store,
     updater,
 )
@@ -590,13 +591,72 @@ class FamilyHubOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_menu(
             step_id="init",
             menu_options=[
-                "settings", "reminders", "test_notify", "upcoming", "restore_backup",
+                "settings", "ai_briefing", "reminders", "test_notify", "upcoming", "restore_backup",
             ],
         )
 
     # Home Assistant's own "Configure" button (Settings -> Devices & Services -> Family Hub -> Configure) already opens this options flow's menu
     async def async_step_settings(self, user_input: dict[str, Any] | None = None):
         return self.async_show_form(step_id="settings", data_schema=vol.Schema({}))
+
+    async def async_step_ai_briefing(self, user_input: dict[str, Any] | None = None):
+        """Select the entities used by the optional daily briefing."""
+        saved = self.config_entry.options.get(briefing.OPTION, {})
+        errors = {}
+        if user_input is not None:
+            calendars = user_input.get(briefing.CONF_CALENDARS, [])
+            ai_task = user_input.get(briefing.CONF_AI_TASK)
+            weather = user_input.get(briefing.CONF_WEATHER)
+            if user_input[briefing.CONF_ENABLED]:
+                if not calendars:
+                    errors[briefing.CONF_CALENDARS] = "briefing_calendars_required"
+                if not ai_task:
+                    errors[briefing.CONF_AI_TASK] = "briefing_ai_task_required"
+            for field, domain, entities in (
+                (briefing.CONF_CALENDARS, "calendar", calendars),
+                (briefing.CONF_AI_TASK, "ai_task", [ai_task] if ai_task else []),
+                (briefing.CONF_WEATHER, "weather", [weather] if weather else []),
+            ):
+                if any(not re.fullmatch(rf"{domain}\.[a-z0-9_]+", entity) for entity in entities):
+                    errors[field] = "briefing_invalid_entity"
+            try:
+                schedule = time.fromisoformat(user_input[briefing.CONF_TIME])
+                if schedule.tzinfo is not None or schedule.microsecond:
+                    raise ValueError
+            except ValueError:
+                errors[briefing.CONF_TIME] = "briefing_invalid_time"
+
+            if not errors:
+                settings = {
+                    **user_input,
+                    briefing.CONF_CALENDARS: list(dict.fromkeys(calendars)),
+                    briefing.CONF_TIME: schedule.isoformat(),
+                }
+                return self.async_create_entry(
+                    title="", data={**self.config_entry.options, briefing.OPTION: settings}
+                )
+
+        defaults = user_input if user_input is not None else saved
+        schema = vol.Schema({
+            vol.Required(briefing.CONF_ENABLED, default=False): selector.BooleanSelector(),
+            vol.Optional(briefing.CONF_CALENDARS): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="calendar", multiple=True)
+            ),
+            vol.Optional(briefing.CONF_AI_TASK): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="ai_task")
+            ),
+            vol.Optional(briefing.CONF_WEATHER): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="weather")
+            ),
+            vol.Required(briefing.CONF_TIME, default=briefing.DEFAULT_TIME): selector.TimeSelector(),
+            vol.Required(briefing.CONF_TITLES, default=False): selector.BooleanSelector(),
+            vol.Required(briefing.CONF_LOCATIONS, default=False): selector.BooleanSelector(),
+        })
+        return self.async_show_form(
+            step_id="ai_briefing",
+            data_schema=self.add_suggested_values_to_schema(schema, defaults),
+            errors=errors,
+        )
 
     async def async_step_reminders(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:

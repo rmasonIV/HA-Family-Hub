@@ -46,6 +46,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 # Chores/Rewards/Permissions - kept in their own modules (see each file's docstring) rather than folded into this already-huge file.
+from . import briefing
 from . import chore_engine
 from . import profile
 from . import presence as presence_mod
@@ -10811,6 +10812,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.data[DOMAIN]["theme_store"] = Store(hass, THEME_STORAGE_VERSION, THEME_STORAGE_KEY)
     hass.data[DOMAIN].setdefault("entries", {})
 
+    websocket_api.async_register_command(hass, briefing.ws_subscribe)
+    websocket_api.async_register_command(hass, briefing.ws_generate)
     websocket_api.async_register_command(hass, _ws_list_themes)
     websocket_api.async_register_command(hass, _ws_get_presence)
     websocket_api.async_register_command(hass, _ws_save_themes)
@@ -11383,6 +11386,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await _async_register_chore_services(hass)
     await hass.config_entries.async_forward_entry_setups(entry, list(profile.PLATFORMS))
 
+    await briefing.async_setup_entry(hass, entry, hass.data[DOMAIN]["entries"][entry.entry_id])
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     async def _on_entity_registry_removed(event) -> None:

@@ -125,7 +125,7 @@ function normalizeConfig(input, warnings = []) {
   return {
     ...config,
     calendars,
-    daily_briefing:config.daily_briefing === true,
+    daily_briefing:typeof config.daily_briefing === "boolean" ? config.daily_briefing : undefined,
     mealie:normalizeMealie(config.mealie, calendars, warnings),
     actions:list('actions', id => isEntityId(id) && Object.hasOwn(ACTIONS,domainOf(id)) && id, MAX_ITEMS),
     widgets:list('widgets', widgetKey, MAX_ITEMS),
@@ -459,6 +459,8 @@ function mount(root, host) {
   let briefingResponse;
   let briefingPending;
   let briefingError;
+  let briefingSubscription;
+  let briefingState;
   const firstDay = host.config.week_start === 'sunday' ? 0 : 1;
   const weekdays = [...DAYS.slice(firstDay), ...DAYS.slice(0, firstDay)];
   let zone = host.hass?.config?.time_zone;
@@ -755,6 +757,7 @@ function mount(root, host) {
   function updateEntities() {
     const hass = host.hass;
     if (!hass) return;
+    startBriefingSubscription();
     updateBriefings();
     for (const [id, item] of legendItems) {
       item.textContent = hass.states[id]?.attributes.friendly_name || id;
@@ -904,34 +907,82 @@ function mount(root, host) {
     renderBriefing(panel, date);
   }
 
+  function stopBriefingSubscription() {
+    const previous = briefingSubscription;
+    briefingSubscription = undefined;
+    if (previous?.unsubscribe) Promise.resolve().then(previous.unsubscribe).catch(() => {});
+  }
+
+  function startBriefingSubscription() {
+    const connection = host.hass?.connection;
+    if (host.config.daily_briefing === false || !connection?.subscribeMessage ||
+        briefingSubscription?.connection === connection) return;
+    stopBriefingSubscription();
+    const current = {connection};
+    briefingSubscription = current;
+    briefingState = undefined;
+    briefingResponse = undefined;
+    briefingError = undefined;
+    Promise.resolve().then(() => connection.subscribeMessage(state => {
+      if (briefingSubscription !== current) return;
+      if (state.mode !== briefingState?.mode || state.revision !== briefingState?.revision) {
+        briefingResponse = undefined;
+        briefingError = undefined;
+      }
+      briefingState = state;
+      updateBriefings();
+    }, {type:'family_hub/briefing/subscribe'})).then(unsubscribe => {
+      if (briefingSubscription === current) current.unsubscribe = unsubscribe;
+      else return unsubscribe();
+    }).catch(() => {
+      // Older Family Hub servers support the YAML package path only.
+      if (briefingSubscription === current && !briefingState) updateBriefings();
+    });
+  }
+
   function renderBriefing(panel, date) {
     const section = panel.querySelector('.briefing');
     const {hass, config} = host;
     const now = time.dayAt(Date.now());
-    section.hidden = !config.daily_briefing || !date || +date < +now;
+    const managed = briefingState && briefingState.mode !== 'legacy';
+    const enabled = config.daily_briefing !== false &&
+      (config.daily_briefing === true || briefingState?.mode === 'ready');
+    section.hidden = !enabled || !date || +date < +now;
     if (section.hidden) return;
     const day = dateKey(date);
     const isToday = +date === +now;
     const sensor = hass?.states[BRIEFING_SENSOR];
     const script = hass?.states['script.' + BRIEFING_SCRIPT];
     const helper = hass?.states[BRIEFING_ENABLED];
-    const setupStatus = !hass ? 'Waiting for Home Assistant…'
+    const managedStatus = {
+      disabled:'Briefing is off. Enable it in the Family Hub integration settings.',
+      forbidden:'You need access to the briefing calendars and forecast.',
+      unavailable:'The Family Hub briefing is temporarily unavailable.'
+    };
+    const legacyConfigured = helper || script || sensor;
+    const legacyStatus = !hass ? 'Waiting for Home Assistant…'
+      : briefingState?.mode === 'legacy' && !legacyConfigured
+        ? 'Set up AI Briefing in the Family Hub integration settings.'
       : !helper || !script || !sensor ? 'Briefing setup is incomplete. Check that the Home Assistant package is loaded.'
       : helper.state === 'off' ? 'Briefing is off. Turn on the Family Hub briefing enabled helper.'
       : helper.state !== 'on' || script.state === 'unavailable' || sensor.state === 'unavailable'
         ? 'Briefing is unavailable. Check the Home Assistant package.' : '';
-    const shared = isToday && sensor?.state === day ? sensor.attributes.briefing : null;
+    const setupStatus = managed ? (managedStatus[briefingState.mode] ?? '') : legacyStatus;
+    const shared = managed ? (isToday ? briefingState.briefing : null)
+      : (isToday && sensor?.state === day ? sensor.attributes.briefing : null);
     const local = briefingResponse?.day === day ? briefingResponse : null;
     const data = isToday && Date.parse(shared?.generated_at) >= (Date.parse(local?.generated_at) || 0)
       ? shared : local;
     const text = !setupStatus && typeof data?.text === 'string' ? data.text : '';
-    const running = Boolean(briefingPending) || script?.state === 'on';
+    const running = Boolean(briefingPending || (managed ? briefingState.pending : script?.state === 'on'));
     const action = section.querySelector('button');
     action.textContent = text ? 'Refresh briefing' : 'Generate briefing';
     action.disabled = running || Boolean(setupStatus);
     action.onclick = () => requestBriefing(day);
-    const failure = isToday && sensor?.attributes.failure?.day === day ? sensor.attributes.failure.status : null;
-    const generating = briefingPending === day || (isToday && script?.state === 'on' && !briefingPending);
+    const failed = managed ? briefingState.failure : sensor?.attributes.failure;
+    const failure = isToday && failed?.day === day ? failed.status : null;
+    const generating = briefingPending === day ||
+      (managed ? briefingState.pending === day : isToday && script?.state === 'on' && !briefingPending);
     const empty = isToday ? 'No briefing yet. Wait for the scheduled run or generate one now.'
       : 'No briefing yet. Generate one for this date.';
     const error = briefingError?.day === day ? briefingError.message : failure && briefingFailure(failure);
@@ -952,7 +1003,7 @@ function mount(root, host) {
   }
 
   function updateBriefings() {
-    if (host.hass?.states[BRIEFING_ENABLED]?.state !== 'on') {
+    if ((!briefingState || briefingState.mode === 'legacy') && host.hass?.states[BRIEFING_ENABLED]?.state !== 'on') {
       briefingResponse = undefined;
       briefingError = undefined;
     }
@@ -961,7 +1012,10 @@ function mount(root, host) {
   }
 
   function briefingFailure(status) {
-    if (status === 'calendar_error') return 'Briefing could not be updated. Check the calendar IDs in the package.';
+    if (status === 'busy') return 'A briefing is already running. Try again when it finishes.';
+    if (status === 'calendar_error') return briefingState?.mode === 'ready'
+      ? 'Briefing could not be updated. Check the calendars in the Family Hub integration settings.'
+      : 'Briefing could not be updated. Check the calendar IDs in the package.';
     if (status === 'too_many_events') return 'Briefing could not be updated. This day has too many events.';
     return 'Briefing could not be updated. Check the AI Task entity and Home Assistant logs, then try again.';
   }
@@ -971,12 +1025,16 @@ function mount(root, host) {
     briefingPending = day;
     briefingError = undefined;
     updateBriefings();
+    const managed = briefingState?.mode === 'ready';
+    const revision = briefingState?.revision;
     try {
-      const result = await host.hass.callWS({
-        type:'call_service', domain:'script', service:BRIEFING_SCRIPT, return_response:true,
-        service_data:{briefing_date:day, force_refresh:true}
-      });
-      const response = result?.response;
+      const response = managed
+        ? await host.hass.callWS({type:'family_hub/briefing/generate', day})
+        : (await host.hass.callWS({
+          type:'call_service', domain:'script', service:BRIEFING_SCRIPT, return_response:true,
+          service_data:{briefing_date:day, force_refresh:true}
+        }))?.response;
+      if (managed && (briefingState?.mode !== 'ready' || briefingState.revision !== revision)) return;
       if (response?.status !== 'ok' || response.day !== day || typeof response.text !== 'string') {
         briefingError = {day, message:briefingFailure(response?.status)};
         return;
@@ -1121,7 +1179,11 @@ function mount(root, host) {
       loadCalendar();
     });
   }
-  return {loadCalendar, updateEntities, updateWidgets, startWeather, stop() { request++; stopWeather(); }};
+  return {loadCalendar, updateEntities, updateWidgets, startWeather, stop() {
+    request++;
+    stopWeather();
+    stopBriefingSubscription();
+  }};
 }
 
 class FamilyHubLiveEditor extends HTMLElement {

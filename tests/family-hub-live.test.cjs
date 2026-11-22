@@ -447,3 +447,40 @@ test('timed overlaps appear independently of AI and exclude adjoining and all-da
   assert.equal(find('#day-details .overlaps li').textContent, 'Appointment overlaps Practice');
   assert.equal(find('#day-details .overlaps ul').children.length, 1);
 });
+
+test('integration settings enable briefings without card YAML or package entities', async t => {
+  const requests = [];
+  let briefingStatus;
+  let unsubscribed = false;
+  const {card, find} = setup(t, {calendars:['calendar.family'], default_view:'month_details'}, {
+    connection:{async subscribeMessage(callback, request) {
+      assert.equal(request.type, 'family_hub/briefing/subscribe');
+      briefingStatus = callback;
+      return () => { unsubscribed = true; };
+    }},
+    async callWS(request) {
+      requests.push(request);
+      return {status:'ok', day:request.day, text:'A sample briefing.', generated_at:'2026-11-21T02:00:00Z'};
+    }
+  });
+  await tick();
+  const section = find('#day-details .briefing');
+  const button = section.querySelector('button');
+  assert.equal(section.hidden, true);
+  briefingStatus({mode:'ready', revision:'first'});
+  assert.equal(section.hidden, false);
+  assert.equal(button.disabled, false);
+  button.click();
+  await tick();
+  assert.equal(requests[0].type, 'family_hub/briefing/generate');
+  assert.equal(requests[0].day, '2026-11-20');
+  assert.match(section.textContent, /A sample briefing/);
+
+  briefingStatus({mode:'ready', revision:'second'});
+  assert.doesNotMatch(section.textContent, /A sample briefing/);
+  briefingStatus({mode:'disabled'});
+  assert.equal(section.hidden, true);
+  card.remove();
+  await tick();
+  assert.equal(unsubscribed, true);
+});
