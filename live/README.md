@@ -99,7 +99,7 @@ Use a Gemini API key and check the API project's quota and billing. Google AI co
 
 ## Mealie recipe details
 
-Keep your Mealie Dinner entity in `calendars`. Add this optional block in the card's YAML editor to show a recipe thumbnail when available and an **Open in Mealie** link in Week day details and the Month details pane.
+Keep your Mealie Dinner entity in `calendars`. Add this optional block in the card's YAML editor to show the dinner title, a thumbnail and short recipe description when available, and an **Open in Mealie** link. These appear in the Month selected-day pane and in Week day details alongside AI Briefing when it is enabled.
 
 ```yaml
 mealie:
@@ -112,8 +112,8 @@ mealie:
 - **Calendar** is the same entity ID already listed under `calendars`.
 - **Config entry ID** identifies the existing Home Assistant integration. In Home Assistant, select **Mealie: Get mealplan** in the automation editor, choose your Mealie instance, then switch that action to YAML to read its `config_entry_id`. Use the same instance that supplies the dinner calendar.
 - **URL** is the browser-accessible Mealie base address without a recipe path. **Group** is the segment after `/g/` when you open a recipe in Mealie. For example, use `home` for a recipe URL containing `/g/home/r/`.
-- The card reads the selected date through Home Assistant and uses the returned recipe to enrich a matching dinner title. A plain meal note or an ambiguous recipe match appears as a regular event. No additional Mealie token is needed.
-- The recipe opens in a new tab using your normal Mealie login. If an image is missing or the browser cannot load it, the title and recipe link remain available. If Home Assistant cannot return the meal plan, check the instance ID and the **Get mealplan** action with the same Home Assistant account used on the dashboard.
+- The card reads only the selected date through Home Assistant’s `mealie.get_mealplan` action when a dinner event is visible. Week and Month share the lookup for five minutes. The action supplies the recipe description directly. A plain meal note or an ambiguous recipe match appears as a regular event. No additional Mealie token is needed.
+- The dashboard browser loads thumbnails directly from the Mealie URL, so the tablet or computer must be able to reach that address on your LAN. Use a trusted HTTPS Mealie URL if you open Home Assistant over HTTPS, since the browser may block HTTP images on an HTTPS page. The recipe opens in a new tab using your normal Mealie login. If the thumbnail fails, the card tries the full-size Mealie image. If both fail, the title, available description and recipe link remain visible. If Home Assistant cannot return the meal plan, check the instance ID and the **Get mealplan** action with the same Home Assistant account used on the dashboard.
 
 ## Quick Widgets
 
