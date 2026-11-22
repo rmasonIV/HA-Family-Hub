@@ -283,6 +283,7 @@ test('Mealie enriches only existing dinner events and shares the lookup between 
         : [dinnerCalendarEvent('Chickpea bowls')];
     },
     async callWS(message) {
+      if (message.type === 'family_hub/assistant/status') return {visible:false};
       requests.push(message);
       return {response:{mealplan:[
         dinnerRecipe('Chickpea bowls', 'chickpea-bowls'),
@@ -378,6 +379,7 @@ test('briefings are opt-in, plain text, shared today and transient for future da
     calendars:['calendar.family','calendar.school'], default_view:'month_details', daily_briefing:true
   }, {
     async callWS(message) {
+      if (message.type === 'family_hub/assistant/status') return {visible:false};
       calls.push(message);
       if (calls.length > 1) throw new Error('Provider unavailable');
       return {response:{status:'ok', day:'2026-11-21', text:'No events are scheduled.',
@@ -460,6 +462,7 @@ test('integration settings enable briefings without card YAML or package entitie
       return () => { unsubscribed = true; };
     }},
     async callWS(request) {
+      if (request.type === 'family_hub/assistant/status') return {visible:false};
       requests.push(request);
       return {status:'ok', day:request.day, text:'A sample briefing.', generated_at:'2026-11-21T02:00:00Z'};
     }
@@ -561,4 +564,55 @@ test('visual editor changes one appearance setting and preserves the other card 
   assert.equal(saved.appearance.frame, 'off');
   assert.equal(saved.appearance.seasonal_accent, 'christmas_retro');
   assert.equal(saved.daily_briefing, true);
+});
+
+test('Assistant reviews a text-only proposal and confirms just its ID once', async t => {
+  const requests = [];
+  let resolveSave;
+  const {find, window} = setup(t, {calendars:['calendar.family']}, {
+    async callWS(message) {
+      switch (message.type) {
+        case 'family_hub/assistant/status':
+          return {visible:true, configured:true, calendars:{'calendar.family':'Family'}};
+        case 'family_hub/assistant/propose':
+          requests.push(message);
+          return {
+            status:'proposal', id:'test-id', calendar:'Family', timezone:'America/Chicago',
+            default_minutes:60,
+            event:{summary:'<img src=x>', start_date_time:'2026-11-20T18:00:00-06:00',
+              end_date_time:'2026-11-20T19:00:00-06:00', description:'Bring water'},
+          };
+        case 'family_hub/assistant/confirm':
+          requests.push(message);
+          return new Promise(resolve => { resolveSave = resolve; });
+        default:
+          throw new Error(message.type);
+      }
+    }
+  });
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+    this.dispatchEvent(new window.Event('close'));
+  };
+  await tick();
+  assert.equal(find('#assistant-open').hidden, false);
+  find('#assistant-open').click();
+  find('#assistant-request').value = 'Practice at 6 PM today';
+  find('#assistant-propose').click();
+  await tick();
+  assert.equal(requests.length, 1);
+  const preview = find('#assistant-preview');
+  assert.equal(preview.querySelector('img'), null);
+  assert.match(preview.textContent, /<img src=x>[\s\S]*Family[\s\S]*60 minutes[\s\S]*Bring water/);
+  find('#assistant-confirm').click();
+  find('#assistant-confirm').click();
+  assert.deepEqual(JSON.parse(JSON.stringify(requests[1])), {
+    type:'family_hub/assistant/confirm', proposal_id:'test-id',
+  });
+  assert.equal(requests.length, 2);
+  resolveSave({status:'created'});
+  await tick();
+  assert.equal(find('#assistant-dialog').open, false);
+  assert.equal(find('#assistant-notice').textContent, 'Event created.');
 });

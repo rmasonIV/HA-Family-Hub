@@ -38,6 +38,19 @@ In Month, today's date has its own marker and the selected date has a tinted cel
 
 Calendar events refresh every five minutes while the card is open. The refresh updates today's highlight and advances an open pane that was showing today. A pane showing a different date stays on that date. Home Assistant sends daily forecast updates through its weather subscription, and entity updates move the current-temperature marker.
 
+
+## Family Assistant
+
+1. Add or configure an **AI Task** in Home Assistant. For a local setup, start with the built-in Ollama integration and choose a model that supports structured output.
+2. Open **Settings → Devices & services → Family Hub Light → Configure → Family Assistant**. Enable Assistant, select the AI Task, choose which calendars it can write to, and optionally choose a default. A calendar must support Home Assistant's **Create calendar event** action.
+3. In Family Hub Live, select **Add event with Assistant**. Type a request such as “Soccer practice Friday at 6 PM for 90 minutes on Family.” Review the calendar, title, time, and any notes or location. Select **Create event** once the preview is correct.
+
+The Assistant uses Home Assistant's time zone and shows a 60-minute default when a timed request omits an end time or duration. Say “all day” for an all-day event. Use **Edit request** or choose another calendar if the preview needs correction. Other built-in providers can use the same integration when their AI Task supports structured data. Provider credentials stay in Home Assistant. The selected provider receives the typed request, eligible calendar labels, locale, and time zone. Cloud models process that data externally. [Home Assistant AI Task](https://www.home-assistant.io/actions/ai_task.generate_data/) · [Ollama setup](https://www.home-assistant.io/integrations/ollama/)
+
+Assistant requires a signed-in Home Assistant account, Family Hub's **Edit events** permission, and access to control the target calendar. Users sharing the kiosk share its account identity. A write from the Pi appears under its account, such as **Onlooker**, in Home Assistant Activity when Logbook and Recorder are enabled and include the calendar. Family Hub's info logs record the account ID for requests and write outcomes without event text. For a gathering, leave **Edit events** off for Onlooker or switch off **Enable Family Assistant**. Those controls govern Assistant access. Review the kiosk account's Home Assistant permissions separately for native calendar access.
+
+This release creates one event at a time. If a save cannot be verified, check the target calendar before trying again. Follow-up ideas include a guest-mode calendar lock enforced on the server, direct editing in the review modal with a touch-friendly 15-minute duration picker, event updates with an exact before-and-after preview, and deletion of a single identified event with an extra confirmation. Invitations require separate provider support. Future voice input can fill the same modal and use the same on-screen confirmation.
+
 ## Calendar appearance
 
 Choose **Frame** and **Seasonal accent** under **Calendar appearance** in the visual editor, or edit the card YAML.

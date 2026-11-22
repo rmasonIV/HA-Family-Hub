@@ -396,6 +396,12 @@ button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;bac
 @container (max-width:680px){.days{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container (max-width:460px){.days{grid-template-columns:minmax(0,1fr)}.day{min-height:120px}}
 
+#assistant-dialog{width:min(36rem,calc(100% - 36px));box-sizing:border-box}
+#assistant-dialog label{display:grid;gap:5px;margin-block:12px}
+#assistant-dialog textarea,#assistant-dialog select{font:inherit;padding:8px;min-width:0}
+#assistant-dialog [hidden]{display:none!important}
+#assistant-preview{white-space:pre-wrap;overflow-wrap:anywhere;margin-block:12px}
+.assistant-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 #calendar-status:empty{display:none} button:disabled{cursor:default;opacity:.55}
 
 :host {
@@ -501,6 +507,23 @@ ${decorated ? `<div class="calendar-surround" data-frame="${frame}" data-seasona
     <button class="action-button" id="month-view" type="button" aria-pressed="false">Month</button>
   </div>
 </div>
+<button class="action-button" id="assistant-open" type="button" hidden>Add event with Assistant</button>
+<dialog id="assistant-dialog" aria-labelledby="assistant-title">
+  <h3 id="assistant-title">Add a calendar event</h3>
+  <label id="assistant-request-label">Describe the event
+    <textarea id="assistant-request" rows="3" maxlength="1000" placeholder="Soccer practice Thursday at 6 PM for 90 minutes"></textarea>
+  </label>
+  <label id="assistant-calendar-label">Calendar<select id="assistant-calendar"></select></label>
+  <div id="assistant-preview" hidden></div>
+  <p id="assistant-status" role="status" aria-live="polite"></p>
+  <div class="assistant-actions">
+    <button class="action-button" id="assistant-close" type="button">Cancel</button>
+    <button class="action-button" id="assistant-edit" type="button" hidden>Edit request</button>
+    <button class="action-button" id="assistant-propose" type="button">Review event</button>
+    <button class="action-button" id="assistant-confirm" type="button" hidden>Create event</button>
+  </div>
+</dialog>
+<p id="assistant-notice" role="status" hidden></p>
 <p class="muted" id="calendar-status" role="status"></p><p id="weather-status" class="muted" role="status" hidden></p>
 <div id="week">
   <div class="period-header">
@@ -558,6 +581,182 @@ ${decorated ? '</div>' : ''}
 </dialog>
 </main>`;
 };
+
+function mountAssistant(root, host, reloadCalendar) {
+  const el = id => root.getElementById('assistant-' + id);
+  const dialog = el('dialog');
+  const request = el('request');
+  const calendar = el('calendar');
+  const status = el('status');
+  const preview = el('preview');
+  const propose = el('propose');
+  const confirm = el('confirm');
+  const edit = el('edit');
+  let availability;
+  let proposal;
+  let session = 0;
+  let statusRequest = 0;
+  let saving = false;
+
+  const call = (action, data = {}) => host.hass.callWS({type:'family_hub/assistant/' + action, ...data});
+  const messages = {
+    unavailable:'Assistant or this calendar is unavailable for your account.',
+    provider_error:'The AI Task could not prepare an event. Check the provider settings and try again.',
+    invalid_output:'The AI Task returned an invalid event. Try a shorter request with a specific date and time.',
+    clarify:'Enter a clear title, date and start time, or specify that the event is all day.',
+    unsupported:'Assistant can create one non-repeating event at a time.',
+    choose_calendar:'Choose an available calendar below and remove any conflicting calendar name from the request.',
+    expired:'This preview expired. Review the request again.',
+    busy:'Assistant is busy or a recent save is unverified. Check your calendar before trying again.',
+    saving:'Home Assistant is still saving this event. Check the calendar before trying again.',
+    uncertain:'The save could not be verified. Check your calendar before trying again.',
+  };
+
+  async function refresh() {
+    if (!host.hass?.callWS) return;
+    const current = ++statusRequest;
+    try {
+      const result = await call('status');
+      if (current !== statusRequest) return;
+      availability = result;
+      el('open').hidden = !result?.visible;
+    } catch {
+      if (current !== statusRequest) return;
+      availability = undefined;
+      el('open').hidden = true;
+    }
+  }
+
+  function setPreview(active) {
+    preview.hidden = confirm.hidden = edit.hidden = !active;
+    el('request-label').hidden = el('calendar-label').hidden = propose.hidden = active;
+    if (!active) preview.textContent = '';
+  }
+
+  function discard() {
+    if (!proposal) return;
+    call('cancel', {proposal_id:proposal.id}).catch(() => {});
+    proposal = undefined;
+  }
+
+  el('open').addEventListener('click', () => {
+    session++;
+    el('notice').hidden = true;
+    request.value = '';
+    setPreview(false);
+    const calendars = Object.entries(availability?.calendars ?? {});
+    calendar.replaceChildren();
+    for (const [id, label] of [['', 'Use default'], ...calendars]) {
+      const option = window.document.createElement('option');
+      option.value = id;
+      option.textContent = label;
+      calendar.append(option);
+    }
+    const ready = calendars.length > 0 && availability?.configured;
+    propose.disabled = !ready;
+    confirm.disabled = false;
+    el('request-label').hidden = el('calendar-label').hidden = propose.hidden = !ready;
+    status.textContent = ready ? '' : 'Set up Family Assistant in Home Assistant → Settings → Devices & services → Family Hub Light → Configure.';
+    dialog.showModal();
+    if (ready) request.focus();
+  });
+
+  propose.addEventListener('click', async () => {
+    if (!request.value.trim()) {
+      status.textContent = 'Describe the event first.';
+      request.focus();
+      return;
+    }
+    const current = session;
+    propose.disabled = request.disabled = calendar.disabled = true;
+    status.textContent = 'Preparing event…';
+    try {
+      const result = await call('propose', {text:request.value, calendar:calendar.value});
+      if (current !== session || !dialog.open) {
+        if (result.status === 'proposal') call('cancel', {proposal_id:result.id}).catch(() => {});
+        return;
+      }
+      if (result.status !== 'proposal') {
+        status.textContent = messages[result.status] ?? messages.invalid_output;
+        return;
+      }
+      proposal = result;
+      const {event} = result;
+      const format = value => new Intl.DateTimeFormat(undefined, {
+        dateStyle:'medium', timeStyle:'short', timeZone:result.timezone,
+      }).format(new Date(value));
+      let interval;
+      let duration;
+      if (event.start_date) {
+        const lastDay = new Date(Date.parse(event.end_date) - 86400000).toISOString().slice(0, 10);
+        interval = lastDay === event.start_date
+          ? `${event.start_date} · All day`
+          : `${event.start_date} through ${lastDay} · All day`;
+      } else {
+        interval = `${format(event.start_date_time)} to ${format(event.end_date_time)} (${result.timezone})`;
+        const minutes = (Date.parse(event.end_date_time) - Date.parse(event.start_date_time)) / 60000;
+        duration = result.default_minutes ? `Default duration: ${minutes} minutes` : `Duration: ${minutes} minutes`;
+      }
+      preview.textContent = [
+        event.summary, result.calendar, interval,
+        duration, event.location, event.description,
+      ].filter(Boolean).join('\n');
+      setPreview(true);
+      status.textContent = 'Review the event before creating it.';
+      confirm.focus();
+    } catch {
+      if (current === session && dialog.open) status.textContent = messages.unavailable;
+    } finally {
+      if (current === session) propose.disabled = request.disabled = calendar.disabled = false;
+    }
+  });
+
+  edit.addEventListener('click', () => {
+    discard();
+    setPreview(false);
+    status.textContent = '';
+    request.focus();
+  });
+
+  confirm.addEventListener('click', async () => {
+    if (!proposal || saving) return;
+    saving = confirm.disabled = edit.disabled = el('close').disabled = true;
+    status.textContent = 'Creating event…';
+    try {
+      const result = await call('confirm', {proposal_id:proposal.id});
+      if (result.status === 'created') {
+        proposal = undefined;
+        dialog.close();
+        el('notice').textContent = 'Event created.';
+        el('notice').hidden = false;
+        reloadCalendar();
+        return;
+      }
+      status.textContent = messages[result.status] ?? messages.uncertain;
+    } catch {
+      status.textContent = messages.uncertain;
+    } finally {
+      saving = edit.disabled = el('close').disabled = false;
+      confirm.disabled = true;
+    }
+  });
+
+  el('close').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('cancel', event => {
+    if (saving) event.preventDefault();
+  });
+  dialog.addEventListener('close', () => {
+    session++;
+    discard();
+    request.value = '';
+    request.disabled = calendar.disabled = confirm.disabled = false;
+    el('open').focus();
+  });
+  return {refresh, stop() {
+    statusRequest++;
+    if (dialog.open && !saving) dialog.close();
+  }};
+}
 
 function mount(root, host) {
   const document = {getElementById: id => root.getElementById(id)};
@@ -730,6 +929,7 @@ function mount(root, host) {
         location:event.location, description:event.description, calendarId:event.calendarId}]);
   }
 
+  const assistant = mountAssistant(root, host, () => loadCalendar());
   async function loadCalendar() {
     const current = ++request;
     const {hass, config} = host;
@@ -759,6 +959,7 @@ function mount(root, host) {
     redrawCalendar();
     startWeather();
     if (!hass) return;
+    assistant.refresh();
     if (!config.calendars.length) {
       calendarStatus.textContent = 'Choose calendars in the card editor.';
       return;
@@ -1294,6 +1495,7 @@ function mount(root, host) {
     request++;
     stopWeather();
     stopBriefingSubscription();
+    assistant.stop();
   }};
 }
 

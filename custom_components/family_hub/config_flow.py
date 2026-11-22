@@ -21,6 +21,7 @@ from . import (
     _overrides_to_text,
     _parse_overrides,
     _restore_settings_history_snapshot,
+    assistant,
     briefing,
     store as chores_store,
     updater,
@@ -591,13 +592,46 @@ class FamilyHubOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_menu(
             step_id="init",
             menu_options=[
-                "settings", "ai_briefing", "reminders", "test_notify", "upcoming", "restore_backup",
+                "settings", "ai_briefing", "family_assistant", "reminders", "test_notify", "upcoming", "restore_backup",
             ],
         )
 
     # Home Assistant's own "Configure" button (Settings -> Devices & Services -> Family Hub -> Configure) already opens this options flow's menu
     async def async_step_settings(self, user_input: dict[str, Any] | None = None):
         return self.async_show_form(step_id="settings", data_schema=vol.Schema({}))
+
+    async def async_step_family_assistant(self, user_input: dict[str, Any] | None = None):
+        """Configure the provider and explicit calendar write allowlist."""
+        saved = self.config_entry.options.get(assistant.OPTION, {})
+        errors = {}
+        if user_input is not None:
+            calendars = list(dict.fromkeys(user_input.get("calendars", [])))
+            ai_task = user_input.get("ai_task")
+            default = user_input.get("default_calendar")
+            if user_input["enabled"]:
+                if not ai_task or not ai_task.startswith("ai_task.") or not self.hass.states.get(ai_task):
+                    errors["ai_task"] = "assistant_task_required"
+                if not calendars or any(not assistant.writable(self.hass.states.get(entity)) for entity in calendars):
+                    errors["calendars"] = "assistant_writable_required"
+                if default and default not in calendars:
+                    errors["default_calendar"] = "assistant_default_not_allowed"
+            if not errors:
+                return self.async_create_entry(title="", data={
+                    **self.config_entry.options, assistant.OPTION: {**user_input, "calendars": calendars},
+                })
+        schema = vol.Schema({
+            vol.Required("enabled", default=False): selector.BooleanSelector(),
+            vol.Optional("ai_task"): selector.EntitySelector(selector.EntitySelectorConfig(domain="ai_task")),
+            vol.Optional("calendars"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="calendar", multiple=True)
+            ),
+            vol.Optional("default_calendar"): selector.EntitySelector(selector.EntitySelectorConfig(domain="calendar")),
+        })
+        return self.async_show_form(
+            step_id="family_assistant",
+            data_schema=self.add_suggested_values_to_schema(schema, saved if user_input is None else user_input),
+            errors=errors,
+        )
 
     async def async_step_ai_briefing(self, user_input: dict[str, Any] | None = None):
         """Select the entities used by the optional daily briefing."""
