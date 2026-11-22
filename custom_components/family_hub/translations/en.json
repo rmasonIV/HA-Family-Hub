@@ -76,6 +76,16 @@
   },
   "options": {
     "step": {
+      "family_assistant": {
+        "title": "Family Assistant",
+        "description": "Allow signed-in users with calendar edit permission to propose and confirm new events.",
+        "data": {
+          "enabled": "Enable Family Assistant",
+          "ai_task": "AI Task",
+          "calendars": "Calendars Assistant can write to",
+          "default_calendar": "Default calendar (optional)"
+        }
+      },
       "ai_briefing": {
         "title": "AI Briefing",
         "description": "Set up a Home Assistant AI Task provider first. Select the calendars that Family Hub can summarize. The selected provider receives event times and any details enabled below. Cloud providers process this data outside Home Assistant.",
@@ -94,6 +104,7 @@
         "menu_options": {
           "settings": "Family Hub Settings",
           "ai_briefing": "AI Briefing",
+          "family_assistant": "Family Assistant",
           "reminders": "Calendar reminders",
           "grocy": "Grocy",
           "test_notify": "Test a notification",
@@ -191,6 +202,9 @@
     },
     "error": {
       "briefing_calendars_required": "Select at least one calendar to enable AI Briefing.",
+      "assistant_task_required": "Choose a Home Assistant AI Task entity.",
+      "assistant_writable_required": "Choose calendars that support creating events.",
+      "assistant_default_not_allowed": "Choose a default from the calendars Assistant can write to.",
       "briefing_ai_task_required": "Select a Home Assistant AI Task to enable AI Briefing.",
       "briefing_invalid_entity": "Select an entity of the supported type.",
       "briefing_invalid_time": "Enter a valid local time.",
