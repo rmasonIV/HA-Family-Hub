@@ -50,7 +50,10 @@ async def run(folder):
 
         assert (await generate())['status'] == 'unavailable'
         await hass.services.async_call('input_boolean','turn_on', {'entity_id': HELPER}, blocking=True)
+        await hass.async_block_till_done()
         today = dt.now().date()
+        # Enabling the helper after the scheduled time catches up immediately.
+        assert hass.states.get(SENSOR).state == today.isoformat()
         empty = await generate()
         assert empty['text'].startswith('No events'), empty
         assert not calls
@@ -87,6 +90,26 @@ async def run(folder):
         assert len(calls) == 2
         assert hass.states.get(SENSOR).attributes['briefing'] == result
 
+        weather_day = tomorrow + timedelta(days=1)
+        hass.states.async_set('weather.test_forecast', 'sunny', {'temperature_unit': '°F'})
+
+        async def forecast(call):
+            assert call.data['type'] == 'daily'
+            return {'weather.test_forecast': {'forecast': [
+                {'datetime': tomorrow.isoformat(), 'condition': 'rainy'},
+                {'datetime': f'{weather_day}T18:00:00+00:00', 'condition': 'sunny', 'temperature': 72},
+            ]}}
+
+        hass.services.async_register('weather', 'get_forecasts', forecast, supports_response=SupportsResponse.ONLY)
+        weather_briefing = await generate(briefing_date=weather_day.isoformat())
+        assert weather_briefing['status'] == 'ok', weather_briefing
+        instructions = calls[-1]['instructions']
+        assert 'Events: []' in instructions and '"condition":"sunny"' in instructions, instructions
+        assert '"temperature":72' in instructions and 'rainy' not in instructions
+        assert len(calls) == 3
+        assert hass.states.get(SENSOR).attributes['briefing'] == result
+        hass.states.async_remove('weather.test_forecast')
+
         async def fail(_call):
             raise HomeAssistantError('Synthetic provider failure')
 
@@ -95,8 +118,11 @@ async def run(folder):
             'entity_id': 'calendar.family', 'summary': 'Shopping',
             'start_date_time': f'{today} 18:00:00', 'end_date_time': f'{today} 19:00:00'},
             blocking=True)
-        assert (await generate())['status'] == 'unavailable'
+        await hass.services.async_call('automation', 'trigger', {
+            'entity_id': 'automation.family_hub_scheduled_briefing'}, blocking=True)
+        await hass.async_block_till_done()
         assert hass.states.get(SENSOR).attributes['briefing'] == result
+        assert hass.states.get(SENSOR).attributes['failure'] == {'day': today.isoformat(), 'status': 'unavailable'}
     finally:
         await hass.async_stop()
     hass = await boot(folder)
@@ -116,8 +142,11 @@ if __name__ == '__main__':
         root = Path(folder)
         packages = root / 'packages'
         packages.mkdir()
-        (packages / PACKAGE.name).write_text(PACKAGE.read_text())
+        (packages / PACKAGE.name).write_text(PACKAGE.read_text()
+            .replace('forecast_entity: ""', 'forecast_entity: weather.test_forecast')
+            .replace('&briefing_time "05:00:00"', '&briefing_time "00:00:00"'))
         (root / 'configuration.yaml').write_text(
             'homeassistant:\n  time_zone: America/Chicago\n  packages: !include_dir_named packages\n'
+            'http:\n  server_host: 127.0.0.1\n'
         )
         asyncio.run(run(folder))

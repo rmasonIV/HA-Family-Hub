@@ -91,10 +91,12 @@ async function main() {
     await week.getByRole('button', {name:'Close day details'}).click();
     await page.locator('#month-view').click();
     await page.locator('[data-day="14"]').click();
+    await page.getByText('No briefing yet. Generate one for this date.').waitFor();
+    await page.locator('#day-details').screenshot({path:join(output, 'briefing-awaiting.png'), animations:'disabled'});
     await page.getByRole('button', {name:'Generate briefing'}).click();
     await page.getByText('No events are scheduled on the briefing calendars.').waitFor();
     assert.deepEqual(errors, []);
-    console.log('Captured six screenshots and checked shared day details, future generation and phone layouts.');
+    console.log('Captured seven screenshots and checked shared day details, future generation and phone layouts.');
   } finally {
     await browser.close();
   }

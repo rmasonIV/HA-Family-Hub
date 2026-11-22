@@ -50,7 +50,7 @@ Select a date in Week or Month to see its schedule. Day details show potential o
      packages: !include_dir_named packages
    ```
 
-3. Edit the package's first script step. Set `calendar_ids` to the calendars you want summarized and `ai_entity` to the AI Task entity from step 1. Set `include_titles` and `include_locations` to suit your household. To change the default **05:00** Home Assistant local time, replace the quoted time on the `at: &briefing_time` line.
+3. Edit the package's first script step. Set `calendar_ids` to the calendars you want summarized and `ai_entity` to the AI Task entity from step 1. Set `include_titles` and `include_locations` to suit your household. To change the default **05:00** Home Assistant local time, replace the quoted time on the `at: &briefing_time` line. Use `"13:50:00"` for 1:50 p.m.
 4. Check configuration, restart Home Assistant, and turn on `input_boolean.family_hub_briefing_enabled` when ready. Keep the package entity IDs as supplied. In the Family Hub Live card's YAML editor, add `daily_briefing: true`.
 
    ```yaml
@@ -61,6 +61,16 @@ Select a date in Week or Month to see its schedule. Day details show potential o
      - calendar.school
    daily_briefing: true
    ```
+
+### Include weather in the briefing
+
+In the package's first `variables` block, set `forecast_entity` to a Home Assistant weather entity that provides a daily forecast. The card's `weather_entity` setting still controls the forecast shown on the calendar.
+
+```yaml
+forecast_entity: weather.pweather
+```
+
+The optional forecast is shared with the configured AI provider. The briefing can give an outlook and an activity idea on a day with no events. If daily data is unavailable for the selected date, the briefing uses the calendar alone. [Home Assistant daily forecast action](https://www.home-assistant.io/actions/weather.get_forecasts/)
 
 ### Provider YAML examples
 
@@ -96,9 +106,9 @@ Use a Gemini API key and check the API project's quota and billing. Google AI co
 
 ### Refresh, storage, and privacy
 
-- The package checks at the configured time and every 15 minutes after it. It hashes normalized briefing inputs, including the prompt version, and skips generation when today's inputs match the stored result. **Refresh briefing** requests a new result on demand. Matching requests within 30 seconds reuse the current result, and the script runs one request at a time.
+- The package checks at the configured time and every 15 minutes after it. It also catches up when Home Assistant starts or when you enable the briefing after the scheduled time. It hashes normalized briefing inputs, including the prompt version, and skips generation when today's inputs match the stored result. **Refresh briefing** requests a new result on demand. Matching requests within 30 seconds reuse the current result, and the script runs one request at a time.
 - A successful briefing for today is shared via `sensor.family_hub_daily_briefing` and survives Home Assistant restarts. Its live state clears at midnight, or at startup if the saved date has passed. Future-day briefings are generated on request and live in the open card's memory. Past days show calendar details. [Home Assistant template sensor restoration](https://www.home-assistant.io/integrations/template/#trigger-based-template-entities)
-- A successfully loaded empty day gets a fixed message without an AI call. If calendar fetching or generation fails, events remain usable and a manual request displays an error. Today's last successful briefing remains visible with its original timestamp.
+- An empty day with no forecast gets a fixed message without an AI call. The outlined **AI briefing** section sits below the weather for today and future dates whenever the card has `daily_briefing: true`. It shows setup or generation status and offers **Generate briefing** when it is ready. If setup looks incomplete, check the package and helper in Developer Tools. If a scheduled or manual request fails, the panel shows an error and events remain usable. Today's last successful briefing remains visible with its original timestamp.
 - Only allowlisted calendars contribute to the prompt. Event times and all-day flags are included. Titles default to on, locations default to off, and notes are omitted. For cloud providers, the included data leaves your Home Assistant. Shared briefing text is readable by Home Assistant users who can read the sensor. Turn off the helper to stop generation and clear the live sensor. The package excludes the sensor from Recorder history. Home Assistant's restore storage and provider retention still apply. [Home Assistant Recorder exclusions](https://www.home-assistant.io/integrations/recorder/#exclude)
 
 ## Mealie recipe details
@@ -220,7 +230,7 @@ widgets:
 
 Open [the interactive preview](../preview/live.html) from a checkout to try the real card with fictional June 2026 data. The browser uses fake Home Assistant calendar, forecast, and state responses. Native Home Assistant icons and Quick Widget cards have lightweight stand-ins, so the captures verify the Live card layout and widget placement. The pre-existing Kitchen concept in the interactive preview is hidden during captures.
 
-From the repository root, install the pinned screenshot dependency and its Chromium build, then regenerate the six preview images. Open the preview with `?briefing` to enable the fictional briefing fixture.
+From the repository root, install the pinned screenshot dependency and its Chromium build, then regenerate the seven preview images. Open the preview with `?briefing` to enable the fictional briefing fixture.
 
 ```sh
 npm ci --prefix preview
