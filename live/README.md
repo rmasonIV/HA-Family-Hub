@@ -18,7 +18,7 @@ To test a development checkout on a Home Assistant installation that already has
 | --- | --- | --- |
 | `calendars` | Empty list | Home Assistant `calendar.*` entity IDs, in legend order. |
 | `calendar_colors` | Rotating palette | Map calendar IDs to quoted six-digit hex colors. The same color appears in the legend, cells, and event details. |
-| `daily_briefing` | `false` | Show the opt-in AI briefing in day details. Requires the [briefing package](#ai-daily-briefing). |
+| `daily_briefing` | Integration setting | Set to `false` to hide AI Briefing on this card. Set to `true` to show status even before setup or to use an existing YAML package. |
 | `weather_entity` | Off | A `weather.*` entity supporting daily forecasts. Select **None** or omit the key to turn calendar weather off. |
 | `default_view` | `week` | Initial calendar view. Use `week`, `month` for the full grid, or `month_details` to open Month with today’s details visible. |
 | `week_start` | `monday` | First column in both views. Choose `monday` or `sunday`. |
@@ -27,6 +27,8 @@ To test a development checkout on a Home Assistant installation that already has
 | `ribbon_default` | `expanded` | Starts Quick Actions `expanded` or `collapsed`. The header toggles it for the current visit. |
 | `widgets` | Empty list | Up to four unique top-level built-in card configurations or entity IDs. |
 | `widget_layout` | `grid` | Responsive side-by-side cards. Use `wide` for a full-width stack at every size. |
+| `appearance.frame` | `off` | `retro_tv` surrounds the calendar with a woodgrain TV frame. |
+| `appearance.seasonal_accent` | `off` | `christmas_retro` adds static holly sprigs to the upper perimeter. |
 
 Click a calendar legend button to show just that calendar. Click a different button to switch calendars, or click the selected button again to restore all calendars. The choice follows you between Week and Month and applies to their day details. The card starts with all calendars visible.
 
@@ -36,80 +38,64 @@ In Month, today's date has its own marker and the selected date has a tinted cel
 
 Calendar events refresh every five minutes while the card is open. The refresh updates today's highlight and advances an open pane that was showing today. A pane showing a different date stays on that date. Home Assistant sends daily forecast updates through its weather subscription, and entity updates move the current-temperature marker.
 
+## Calendar appearance
+
+Choose **Frame** and **Seasonal accent** under **Calendar appearance** in the visual editor, or edit the card YAML.
+
+```yaml
+type: custom:family-hub-live
+calendars:
+  - calendar.family
+default_view: month
+appearance:
+  frame: retro_tv
+  seasonal_accent: christmas_retro
+```
+
+Set `seasonal_accent: off` to keep the TV frame year-round, or use `frame: off` for holly with a thin green outline. Omitting `appearance` turns both options off. Seasonal accents are selected manually. The decoration scales with the card width, and Quick Actions and Quick Widgets sit outside it.
+
+In the pull request preview, append `?frame=retro_tv&seasonal_accent=christmas_retro` to the preview URL to see both options with sample events.
+
 ## AI daily briefing
 
 Select a date in Week or Month to see its schedule. Day details show potential overlaps between timed events on visible calendars, even with AI disabled. Events that meet at an endpoint and all-day events are excluded from overlap checks. When enabled, the briefing and its generation time appear above the event list. The briefing uses its own calendar list, independent of the card's legend filter.
 
-### Install the Home Assistant package
+### Configure AI Briefing in Home Assistant
 
-1. Set up one of the AI Task providers below. In **Developer tools → Actions**, run `ai_task.generate_data` with the provider's `ai_task.*` entity and a harmless prompt. Confirm that the response contains text in `data`. [Home Assistant Generate data action](https://www.home-assistant.io/actions/ai_task.generate_data/)
-2. Copy [family_hub_briefing.yaml](packages/family_hub_briefing.yaml) to `/config/packages/family_hub_briefing.yaml`. If you already use packages, use your existing packages directory and include. Otherwise add this to `configuration.yaml` under your existing `homeassistant:` section.
+1. Set up a Home Assistant AI Task provider. In **Developer Tools → Actions**, test `ai_task.generate_data` with the provider's `ai_task.*` entity and a harmless prompt. Confirm that the response contains text in `data`. [Home Assistant Generate data action](https://www.home-assistant.io/actions/ai_task.generate_data/)
+2. Open **Settings → Devices & services → Family Hub Light → Configure → AI Briefing**. Choose the AI Task and the calendars it can summarize. You can add or remove calendars here later.
+3. Optionally select a weather entity that supports daily forecasts and change the scheduled time (default **05:00** in Home Assistant's time zone). Enable event titles or locations only if you want those fields included. Both start off.
+4. Turn on **Enable AI Briefing** and submit. Open today's details on a Family Hub Live card and select **Generate briefing**, or **Refresh briefing** if today's run has already finished.
 
-   ```yaml
-   homeassistant:
-     packages: !include_dir_named packages
-   ```
+### Move from the YAML package
 
-3. Edit the package's first script step. Set `calendar_ids` to the calendars you want summarized and `ai_entity` to the AI Task entity from step 1. Set `include_titles` and `include_locations` to suit your household. To change the default **05:00** Home Assistant local time, replace the quoted time on the `at: &briefing_time` line. Use `"13:50:00"` for 1:50 p.m.
-4. Check configuration, restart Home Assistant, and turn on `input_boolean.family_hub_briefing_enabled` when ready. Keep the package entity IDs as supplied. In the Family Hub Live card's YAML editor, add `daily_briefing: true`.
+If you already use the [YAML package](packages/family_hub_briefing.yaml), turn off its `input_boolean.family_hub_briefing_enabled` helper before enabling the integration settings to avoid two scheduled runs. Select the AI Task, calendars and other settings in **Configure → AI Briefing**. Existing installations can continue using the package until they save integration settings. Once you have verified the new setup, you can remove the old package file at your next planned Home Assistant restart.
 
-   ```yaml
-   type: custom:family-hub-live
-   default_view: month_details
-   calendars:
-     - calendar.family
-     - calendar.school
-   daily_briefing: true
-   ```
+### AI Task providers
 
-### Include weather in the briefing
+Add the provider through **Settings → Devices & services**, then add or select its data-generating AI Task. Choose the AI Task entity assigned by your installation in Family Hub's **AI Task** picker. API credentials belong in the provider integration setup.
 
-In the package's first `variables` block, set `forecast_entity` to a Home Assistant weather entity that provides a daily forecast. The card's `weather_entity` setting still controls the forecast shown on the calendar.
-
-```yaml
-forecast_entity: weather.pweather
-```
-
-The optional forecast is shared with the configured AI provider. The briefing can give an outlook and an activity idea on a day with no events. If daily data is unavailable for the selected date, the briefing uses the calendar alone. [Home Assistant daily forecast action](https://www.home-assistant.io/actions/weather.get_forecasts/)
-
-### Provider YAML examples
-
-Add the provider through **Settings → Devices & services**, then add or select its data-generating AI Task. In the package, use **one** of the `ai_entity` examples below, replacing the example ID with the entity ID assigned by your installation. API credentials belong in the provider integration setup.
-
-```yaml
-# Ollama on your local network
-ai_entity: ai_task.ollama_ai_task
-```
+#### Ollama on your local network
 
 Give Home Assistant the address of your Ollama host. In the proof of concept on a Mac mini, `qwen3:8b` gave more useful summaries than `gemma3:4b`, with longer waits. Select the model in the Ollama AI Task settings. [Home Assistant Ollama integration](https://www.home-assistant.io/integrations/ollama/)
 
-```yaml
-# OpenAI
-ai_entity: ai_task.openai_ai_task
-```
+#### OpenAI
 
 Set up the OpenAI integration with an OpenAI API key and API billing. A ChatGPT consumer or business subscription and OpenAI API access are billed separately. [Home Assistant OpenAI integration](https://www.home-assistant.io/integrations/openai_conversation/), [OpenAI billing](https://help.openai.com/en/articles/9039756-billing-settings-in-chatgpt-vs-platform)
 
-```yaml
-# Anthropic Claude
-ai_entity: ai_task.claude_ai_task
-```
+#### Anthropic Claude
 
 Use an Anthropic Console API key and API credits or billing. Claude subscriptions and Anthropic API billing are separate. Eligible plans may have API credits that can be claimed in Console. [Home Assistant Anthropic integration](https://www.home-assistant.io/integrations/anthropic/), [Anthropic billing](https://support.claude.com/en/articles/9876003-why-is-claude-api-usage-billed-separately-from-my-paid-claude-plan)
 
-```yaml
-# Google Gemini
-ai_entity: ai_task.google_ai_task
-```
+#### Google Gemini
 
 Use a Gemini API key and check the API project's quota and billing. Google AI consumer subscriptions and Gemini API project billing are separate. [Home Assistant Google Gemini integration](https://www.home-assistant.io/integrations/google_generative_ai_conversation/), [Gemini AI Task implementation](https://github.com/home-assistant/core/blob/dev/homeassistant/components/google_generative_ai_conversation/ai_task.py), [Gemini API billing](https://ai.google.dev/gemini-api/docs/billing)
 
 ### Refresh, storage, and privacy
 
-- The package checks at the configured time and every 15 minutes after it. It also catches up when Home Assistant starts or when you enable the briefing after the scheduled time. It hashes normalized briefing inputs, including the prompt version, and skips generation when today's inputs match the stored result. **Refresh briefing** requests a new result on demand. Matching requests within 30 seconds reuse the current result, and the script runs one request at a time.
-- A successful briefing for today is shared via `sensor.family_hub_daily_briefing` and survives Home Assistant restarts. Its live state clears at midnight, or at startup if the saved date has passed. Future-day briefings are generated on request and live in the open card's memory. Past days show calendar details. [Home Assistant template sensor restoration](https://www.home-assistant.io/integrations/template/#trigger-based-template-entities)
-- An empty day with no forecast gets a fixed message without an AI call. The outlined **AI briefing** section sits below the weather for today and future dates whenever the card has `daily_briefing: true`. It shows setup or generation status and offers **Generate briefing** when it is ready. If setup looks incomplete, check the package and helper in Developer Tools. If a scheduled or manual request fails, the panel shows an error and events remain usable. Today's last successful briefing remains visible with its original timestamp.
-- Only allowlisted calendars contribute to the prompt. Event times and all-day flags are included. Titles default to on, locations default to off, and notes are omitted. For cloud providers, the included data leaves your Home Assistant. Shared briefing text is readable by Home Assistant users who can read the sensor. Turn off the helper to stop generation and clear the live sensor. The package excludes the sensor from Recorder history. Home Assistant's restore storage and provider retention still apply. [Home Assistant Recorder exclusions](https://www.home-assistant.io/integrations/recorder/#exclude)
+- The integration checks at the configured time, every 15 minutes after it, and when it starts after the scheduled time. An unchanged successful briefing is reused. **Refresh briefing** requests a new result, with a 30-second reuse window for matching requests.
+- Today's last successful briefing survives a restart and appears on cards for users with read access to the selected calendars and forecast. Future briefings live in the open card's memory. An empty day with no forecast gets a fixed message without an AI call.
+- The AI provider receives information from the selected calendars, including times and all-day flags. Titles and locations are optional. Event notes are omitted. If the provider is cloud-hosted, the included data leaves Home Assistant. Make calendar and privacy changes in **Configure → AI Briefing**.
 
 ## Mealie recipe details
 

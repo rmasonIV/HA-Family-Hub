@@ -5,6 +5,8 @@ on:
     paths:
       - 'custom_components/family_hub/card/family-hub-live.js'
       - 'preview/live.html'
+      - 'preview/appearance.test.cjs'
+      - 'preview/package*.json'
       - '.github/workflows/live-preview.yml'
 
 permissions:
@@ -12,7 +14,7 @@ permissions:
 
 jobs:
   preview:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Package the current card and sample data
@@ -27,3 +29,12 @@ jobs:
           name: family-hub-live-preview
           path: preview-build/
           if-no-files-found: error
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test calendar appearance in Chromium
+        working-directory: preview
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm test

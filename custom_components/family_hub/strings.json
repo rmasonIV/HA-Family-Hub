@@ -76,10 +76,24 @@
   },
   "options": {
     "step": {
+      "ai_briefing": {
+        "title": "AI Briefing",
+        "description": "Set up a Home Assistant AI Task provider first. Select the calendars that Family Hub can summarize. The selected provider receives event times and any details enabled below. Cloud providers process this data outside Home Assistant.",
+        "data": {
+          "enabled": "Enable AI Briefing",
+          "calendars": "Calendars to summarize",
+          "ai_task": "AI Task",
+          "weather": "Daily forecast (optional)",
+          "schedule_time": "Daily briefing time",
+          "include_titles": "Include event titles",
+          "include_locations": "Include event locations"
+        }
+      },
       "init": {
         "title": "Family Hub",
         "menu_options": {
           "settings": "Family Hub Settings",
+          "ai_briefing": "AI Briefing",
           "reminders": "Calendar reminders",
           "grocy": "Grocy",
           "test_notify": "Test a notification",
@@ -168,6 +182,10 @@
       "feature_disabled": "This feature is disabled in this Family Hub version."
     },
     "error": {
+      "briefing_calendars_required": "Select at least one calendar to enable AI Briefing.",
+      "briefing_ai_task_required": "Select a Home Assistant AI Task to enable AI Briefing.",
+      "briefing_invalid_entity": "Select an entity of the supported type.",
+      "briefing_invalid_time": "Enter a valid local time.",
       "update_failed": "Couldn't install the update: {error}",
       "invalid_target": "\"{target}\" isn't a valid notify target - it should look like notify.mobile_app_something.",
       "test_failed": "Couldn't send the test notification: {error}",

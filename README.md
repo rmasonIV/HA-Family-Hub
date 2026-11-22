@@ -27,6 +27,18 @@ Configure calendar and action entities in the visual editor. Use the code editor
 
 Enable [AI Daily Briefing](live/README.md#ai-daily-briefing) to summarize an allowlist of calendars with a local or cloud Home Assistant AI Task.
 
+### Optional calendar appearance
+
+In the Family Hub Live visual editor, use **Calendar appearance**, or add this to the existing card YAML.
+
+```yaml
+appearance:
+  frame: retro_tv
+  seasonal_accent: christmas_retro
+```
+
+Both settings default to `off`. Set either one to `off` or omit it to use the other by itself. The Retro TV frame adds woodgrain, ivory trim, brass detailing, and rabbit-ear antennas around the calendar. Retro Christmas adds two small holly sprigs along the upper edge. The accents stay visible until you turn them off. Both use static CSS and embedded SVG. [See complete card configuration examples](live/README.md#calendar-appearance).
+
 ## A look around
 
 The Family Hub Live card renders these fictional calendars, actions, and weather forecasts. The preview supplies sample Home Assistant responses and stand-ins for native Quick Widgets. See the [capture instructions](live/README.md#screenshots-and-test-data) to regenerate the images.
