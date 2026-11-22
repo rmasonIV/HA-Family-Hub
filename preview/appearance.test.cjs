@@ -31,7 +31,7 @@ test('the calendar stays usable inside the frame from phone to wall display', as
         const outer = await surround.boundingBox();
         const aerial = await antenna.boundingBox();
         assert.ok(screen.x > outer.x && screen.x + screen.width < outer.x + outer.width);
-        assert.ok(aerial.y >= 0 && aerial.y + aerial.height <= outer.y + 1);
+        assert.ok(Math.abs(aerial.y + aerial.height - outer.y) <= 1);
         for (const holly of await surround.locator('.christmas-holly').all()) {
           const sprig = await holly.boundingBox();
           assert.ok(sprig.y + sprig.height <= screen.y + 1);

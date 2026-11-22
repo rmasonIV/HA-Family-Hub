@@ -526,7 +526,7 @@ test('calendar appearance is optional, independent and safe to reconfigure', asy
   card.setConfig({...config, appearance:['retro_tv']});
   assert.equal(find('.calendar-surround'), null);
   assert.match(find('#config-status').textContent, /appearance must be a mapping/);
-  card.setConfig({...config, appearance:{frame:'off', seasonal_accent:'off'}});
+  card.setConfig({...config, appearance:{frame:false, seasonal_accent:'off'}});
   assert.equal(find('.calendar-surround'), null);
   assert.equal(find('#config-status').hidden, true);
 });

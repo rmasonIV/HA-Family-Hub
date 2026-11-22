@@ -94,7 +94,8 @@ function normalizeAppearance(value, warnings) {
   if (value != null && !isRecord(value)) warnings.push('appearance must be a mapping.');
   const settings = isRecord(value) ? value : {};
   return Object.fromEntries(Object.entries(APPEARANCE_OPTIONS).map(([key, options]) => {
-    const choice = settings[key];
+    // Some YAML loaders parse an unquoted off as false.
+    const choice = settings[key] === false ? 'off' : settings[key];
     if (typeof choice === 'string' && Object.hasOwn(options, choice)) return [key, choice];
     if (choice != null) warnings.push('appearance.'+key+' must be '+Object.keys(options).join(' or ')+'.');
     return [key, 'off'];
