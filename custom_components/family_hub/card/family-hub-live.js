@@ -181,6 +181,29 @@ const addDays = (date, count) => new Date(Date.UTC(date.getUTCFullYear(), date.g
 const monthDate = (date, offset = 0, day = 1) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth()+offset, day));
 const dateKey = date => date.toISOString().slice(0, 10);
 const dateLabel = (date, options) => date.toLocaleDateString(undefined, {...options, timeZone:'UTC'});
+function briefingTimestamp(instant, hass, timeZone) {
+  const options = {dateStyle:'short', timeStyle:'short', timeZone};
+  const timeFormat = hass?.locale?.time_format;
+  if (timeFormat === '12' || timeFormat === '24') options.hourCycle = timeFormat === '12' ? 'h12' : 'h23';
+  if (timeFormat === 'system') {
+    options.hourCycle = new Intl.DateTimeFormat(undefined, {hour:'numeric'}).resolvedOptions().hourCycle;
+  }
+  for (const language of [hass?.locale?.language, hass?.language, hass?.config?.language]) {
+    if (!language) continue;
+    try {
+      const locale = new Intl.Locale(language.replaceAll('_', '-'));
+      const country = hass?.config?.country;
+      const regional = !locale.region && /^[a-z]{2}$/i.test(country ?? '')
+        ? new Intl.Locale(locale, {region:country}) : locale;
+      const supported = Intl.DateTimeFormat.supportedLocalesOf([regional.toString(), locale.toString()]);
+      if (supported.length) return new Intl.DateTimeFormat(supported, options).format(instant);
+    } catch {
+      // Try the next language if a saved locale is invalid.
+    }
+  }
+  return new Intl.DateTimeFormat(undefined, options).format(instant);
+}
+
 function calendarTime(zone) {
   let parts;
   try {
@@ -211,7 +234,7 @@ function calendarTime(zone) {
   };
   const time = new Intl.DateTimeFormat(undefined, {timeZone,hour:'numeric',minute:'2-digit'});
   const datetime = new Intl.DateTimeFormat(undefined, {timeZone,month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-  return {dayAt,midnight,when(start,end,date,allDay) {
+  return {timeZone,dayAt,midnight,when(start,end,date,allDay) {
     if (allDay) return 'All day';
     const format = +dayAt(start) === +date && +dayAt(end) === +date ? time : datetime;
     return format.format(start)+' – '+format.format(end);
@@ -1086,9 +1109,7 @@ function mount(root, host) {
     timestamp.hidden = !text || !Number.isFinite(Date.parse(data?.generated_at));
     if (!timestamp.hidden) {
       timestamp.dateTime = data.generated_at;
-      timestamp.textContent = 'Generated ' + new Intl.DateTimeFormat(undefined, {
-        dateStyle:'short', timeStyle:'short', timeZone:zone
-      }).format(new Date(data.generated_at));
+      timestamp.textContent = 'Generated ' + briefingTimestamp(new Date(data.generated_at), hass, time.timeZone);
     }
   }
 

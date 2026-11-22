@@ -452,7 +452,8 @@ test('integration settings enable briefings without card YAML or package entitie
   const requests = [];
   let briefingStatus;
   let unsubscribed = false;
-  const {card, find} = setup(t, {calendars:['calendar.family'], default_view:'month_details'}, {
+  const {card, find, hass} = setup(t, {calendars:['calendar.family'], default_view:'month_details'}, {
+    locale:{language:'en-US', time_format:'language'},
     connection:{async subscribeMessage(callback, request) {
       assert.equal(request.type, 'family_hub/briefing/subscribe');
       briefingStatus = callback;
@@ -475,6 +476,17 @@ test('integration settings enable briefings without card YAML or package entitie
   assert.equal(requests[0].type, 'family_hub/briefing/generate');
   assert.equal(requests[0].day, '2026-11-20');
   assert.match(section.textContent, /A sample briefing/);
+  const timestamp = section.querySelector('time');
+  assert.equal(timestamp.dateTime, '2026-11-21T02:00:00Z');
+  assert.equal(timestamp.textContent, 'Generated 11/20/26, 8:00 PM');
+  card.hass = {...hass, locale:{language:'en-GB', time_format:'language'}};
+  assert.equal(timestamp.textContent, 'Generated 20/11/2026, 20:00');
+  card.hass = {...hass, locale:{language:'en-US', time_format:'24'}};
+  assert.equal(timestamp.textContent, 'Generated 11/20/26, 20:00');
+  card.hass = {...hass, locale:{language:'en', time_format:'language'},
+    config:{...hass.config, country:'GB'}};
+  assert.equal(timestamp.textContent, 'Generated 20/11/2026, 20:00');
+  assert.equal(timestamp.dateTime, '2026-11-21T02:00:00Z');
 
   briefingStatus({mode:'ready', revision:'second'});
   assert.doesNotMatch(section.textContent, /A sample briefing/);

@@ -60,6 +60,8 @@ In the pull request preview, append `?frame=retro_tv&seasonal_accent=christmas_r
 
 Select a date in Week or Month to see its schedule. Day details show potential overlaps between timed events on visible calendars, even with AI disabled. Events that meet at an endpoint and all-day events are excluded from overlap checks. When enabled, the briefing and its generation time appear above the event list. The briefing uses its own calendar list, independent of the card's legend filter.
 
+The integration formats dates and event times for the AI using Home Assistant's configured language and country. For example, US English uses Sunday, November 22, 2026 and 3:30 PM. If the region is unavailable, the integration uses the language's default formats, with English as a fallback. The card shows the generation timestamp in the Home Assistant server time zone using your profile's language and time format. An explicit 12-hour or 24-hour profile setting overrides the locale default. The card falls back to the browser locale if Home Assistant supplies no usable language. Stored dates and timestamps continue to use ISO format.
+
 ### Configure AI Briefing in Home Assistant
 
 1. Set up a Home Assistant AI Task provider. In **Developer Tools → Actions**, test `ai_task.generate_data` with the provider's `ai_task.*` entity and a harmless prompt. Confirm that the response contains text in `data`. [Home Assistant Generate data action](https://www.home-assistant.io/actions/ai_task.generate_data/)
@@ -226,6 +228,6 @@ npm run capture --prefix preview
 
 The harness checks Week and Month at desktop and phone widths, verifies the Mealie Dinner filter through a view switch, exercises current and future briefings, and writes PNGs to `images/live/`. The date, time zone, locale, viewport and device scale are fixed. Font rendering can differ by operating system. The harness opens a local file and blocks HTTP(S) requests.
 
-With Home Assistant Core 2026.11 installed in a test environment, run `python tests/check_briefing_package.py` to exercise the package with a temporary Local Calendar, synthetic AI responses, and a restart.
+With Home Assistant Core 2026.11 installed in a test environment, run `python tests/check_briefing_package.py` to exercise the package with a temporary Local Calendar, synthetic AI responses, and a restart. Install the Babel version listed in the integration manifest, then run `python -B -m unittest discover -s tests -p check_briefing_locale.py` to check the managed briefing's locale formatting.
 
 See the [Mealie assessment and Kitchen V1 proposal](KITCHEN_V1.md) for the next design review.
