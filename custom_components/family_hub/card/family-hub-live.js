@@ -52,12 +52,12 @@ function comfortStops(low, high, unit, settings) {
 const ACTION_ICONS = {
   light:'mdi:lightbulb', switch:'mdi:toggle-switch', input_boolean:'mdi:toggle-switch',
   script:'mdi:play-circle-outline', button:'mdi:gesture-tap-button',
-  input_button:'mdi:gesture-tap-button', cover:'mdi:garage'
+  input_button:'mdi:gesture-tap-button', cover:'mdi:garage', climate:'mdi:thermostat'
 };
 const ACTION_ICON_CHOICES = [
   'mdi:lightbulb', 'mdi:lightbulb-on', 'mdi:lamps', 'mdi:floor-lamp', 'mdi:led-strip-variant',
   'mdi:toggle-switch', 'mdi:garage', 'mdi:door', 'mdi:fan', 'mdi:power',
-  'mdi:play-circle-outline', 'mdi:gesture-tap-button'
+  'mdi:play-circle-outline', 'mdi:gesture-tap-button', 'mdi:thermostat'
 ];
 const isHexColor = color => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color);
 const isIcon = icon => typeof icon === 'string' && /^mdi:[a-z0-9-]+$/.test(icon);
@@ -68,7 +68,8 @@ const calendarColor = (config, id, index) => {
 };
 const ACTIONS = {
   light: 'toggle', switch: 'toggle', input_boolean: 'toggle',
-  script: 'turn_on', button: 'press', input_button: 'press', cover: 'open_cover'
+  script: 'turn_on', button: 'press', input_button: 'press', cover: 'open_cover',
+  climate: 'set_temperature'
 };
 const domainOf = id => typeof id === 'string' ? id.split('.')[0] : '';
 const isEntityId = id => typeof id === 'string' && /^[a-z0-9_]+\.[a-z0-9_]+$/.test(id);
@@ -323,6 +324,13 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .quick-control{display:flex;align-items:center;gap:10px;min-height:64px;padding:10px;border:1px solid #cbd5e1;border-radius:9px;background:#f4f7fb;text-align:left;color:inherit}
 .quick-control[aria-pressed="true"]{background:#fff1bf}
 .quick-control small,.device strong{display:block}
+.quick-climate{grid-column:span 2;display:grid;gap:6px;min-width:0}
+.quick-climate-heading{display:flex;align-items:center;gap:8px}
+.quick-climate-heading ha-icon{flex:none}
+.quick-climate-setpoint{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:4px;text-align:center}
+.quick-climate [hidden]{display:none}
+.quick-climate-setpoint button{min-height:44px;border:1px solid var(--fh-border);border-radius:6px;background:var(--fh-surface);color:inherit;font:inherit;font-size:1.25rem;touch-action:manipulation}
+.quick-climate-setpoint button:disabled{opacity:.5}
 .toolbar-top{display:flex;align-items:center;justify-content:flex-end;margin:14px 0 8px}
 .settings-button,.action-button{border:1px solid #cbd5e1;border-radius:9px;background:white;padding:10px 14px;min-height:44px}
 .settings-button{display:flex;align-items:center;gap:8px}
@@ -793,6 +801,109 @@ function mountAssistant(root, host, reloadCalendar) {
   }};
 }
 
+const CLIMATE_SETPOINTS = {temperature:'Target', target_temp_low:'Low target', target_temp_high:'High target'};
+
+function climateAdjustment(entity, key, direction) {
+  const {state:mode, attributes} = entity ?? {};
+  if (!Array.isArray(attributes?.hvac_modes) || !attributes.hvac_modes.includes(mode)) return;
+  const range = mode === 'heat_cool';
+  if (range ? key === 'temperature' : key !== 'temperature' || !['heat','cool'].includes(mode)) return;
+  const feature = range ? 2 : 1; // Home Assistant ClimateEntityFeature target range / single target.
+  if (!(attributes.supported_features & feature)) return;
+  const {min_temp:min, max_temp:max, target_temp_step:reportedStep} = attributes;
+  const target = attributes[key];
+  if (![min, max, target].every(Number.isFinite)) return;
+  const step = Number.isFinite(reportedStep) && reportedStep > 0 ? reportedStep : 1;
+  const next = Number((target + direction * step).toFixed(8));
+  if (next === target || next < min || next > max) return;
+  if (!range) return {temperature:next};
+  const low = key === 'target_temp_low' ? next : attributes.target_temp_low;
+  const high = key === 'target_temp_high' ? next : attributes.target_temp_high;
+  if (!Number.isFinite(low) || !Number.isFinite(high) || low < min || high > max || low >= high) return;
+  return {target_temp_low:low, target_temp_high:high};
+}
+
+function mountClimateAction(controls, host, id) {
+  const document = window.document;
+  const appearance = host.config.action_appearance?.[id] ?? {};
+  const tile = document.createElement('div');
+  tile.className = 'quick-control quick-climate';
+  tile.setAttribute('role', 'group');
+  if (isHexColor(appearance.off_color)) {
+    tile.setAttribute('data-custom-fill', '');
+    tile.style.setProperty('--action-fill', appearance.off_color);
+  }
+  const heading = document.createElement('div');
+  heading.className = 'quick-climate-heading';
+  const icon = document.createElement('ha-icon');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.icon = isIcon(appearance.icon) ? appearance.icon : ACTION_ICONS.climate;
+  const label = document.createElement('strong');
+  heading.append(icon, label);
+  const indoor = document.createElement('small');
+  const status = document.createElement('small');
+  status.setAttribute('role', 'status');
+  status.hidden = true;
+  tile.append(heading, indoor);
+  let pending = false;
+  const rows = Object.entries(CLIMATE_SETPOINTS).map(([key, title]) => {
+    const row = document.createElement('div');
+    row.className = 'quick-climate-setpoint';
+    const value = document.createElement('span');
+    const buttons = [-1, 1].map((direction, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = index ? '+' : '−';
+      const verb = index ? 'Increase' : 'Decrease';
+      button.onclick = async () => {
+        const hass = host.hass;
+        const targets = climateAdjustment(hass?.states[id], key, direction);
+        if (pending || !targets) return;
+        pending = true;
+        status.hidden = true;
+        status.textContent = '';
+        update(hass);
+        try {
+          await hass.callService('climate', ACTIONS.climate, {entity_id:id, ...targets});
+        } catch {
+          status.hidden = false;
+          status.textContent = 'Could not set the temperature.';
+        } finally {
+          pending = false;
+          update(host.hass);
+        }
+      };
+      return {button, verb, direction};
+    });
+    row.append(buttons[0].button, value, buttons[1].button);
+    tile.append(row);
+    return {key, title, row, value, buttons};
+  });
+  tile.append(status);
+  controls.append(tile);
+
+  function update(hass) {
+    const entity = hass.states[id];
+    const attributes = entity?.attributes ?? {};
+    const available = entity && !['unknown','unavailable'].includes(entity.state);
+    const name = appearance.name || attributes.friendly_name || id;
+    label.textContent = name;
+    tile.setAttribute('aria-label', name);
+    const unit = attributes.temperature_unit ?? hass.config?.unit_system?.temperature ?? '';
+    const format = value => available && Number.isFinite(value) ? value + unit : '—';
+    indoor.textContent = available ? 'Indoor: ' + format(attributes.current_temperature) : 'Unavailable';
+    for (const {key, title, row, value, buttons} of rows) {
+      row.hidden = (key !== 'temperature') !== (entity?.state === 'heat_cool');
+      value.textContent = title + ': ' + format(attributes[key]);
+      for (const {button, verb, direction} of buttons) {
+        button.setAttribute('aria-label', verb + ' ' + name + ' ' + title.toLowerCase());
+        button.disabled = row.hidden || pending || !climateAdjustment(entity, key, direction);
+      }
+    }
+  }
+  return update;
+}
+
 function mount(root, host) {
   const document = {getElementById: id => root.getElementById(id)};
   const configStatus = document.getElementById('config-status');
@@ -1072,7 +1183,12 @@ function mount(root, host) {
     redrawCalendar();
   }
 
-  const actionButtons = host.config.actions.map(id => {
+  const climateUpdates = [];
+  const actionButtons = host.config.actions.flatMap(id => {
+    if (domainOf(id) === 'climate') {
+      climateUpdates.push(mountClimateAction(controls, host, id));
+      return [];
+    }
     const button = window.document.createElement('button');
     const label = window.document.createElement('span');
     const state = window.document.createElement('small');
@@ -1099,7 +1215,7 @@ function mount(root, host) {
     };
     return {id, button, label, state, appearance, busy:() => pending};
   });
-  if (!actionButtons.length) controls.textContent = 'Add entities in the card editor.';
+  if (!host.config.actions.length) controls.textContent = 'Add entities in the card editor.';
   const widgetPanel = document.getElementById('widget-panel');
   const widgetGrid = widgetPanel.querySelector('.widget-grid');
   widgetGrid.classList.toggle('wide', host.config.widget_layout === 'wide');
@@ -1189,6 +1305,7 @@ function mount(root, host) {
       button.toggleAttribute('data-custom-fill', isHexColor(fill));
       if (isHexColor(fill)) button.style.setProperty('--action-fill', fill);
     }
+    for (const update of climateUpdates) update(hass);
     updateWidgets(hass);
   }
   function eventCards(events, tag = 'div') {

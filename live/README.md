@@ -22,8 +22,8 @@ To test a development checkout on a Home Assistant installation that already has
 | `weather_entity` | Off | A `weather.*` entity supporting daily forecasts. Select **None** or omit the key to turn calendar weather off. |
 | `default_view` | `week` | Initial calendar view. Use `week`, `month` for the full grid, or `month_details` to open Month with today’s details visible. |
 | `week_start` | `monday` | First column in both views. Choose `monday` or `sunday`. |
-| `actions` | Empty list | Up to four unique supported entity IDs. Actions support lights, switches, input booleans, scripts, buttons, input buttons, and covers. Covers only offer opening from the closed state and ask for confirmation. |
-| `action_appearance` | Domain icon and theme fill | Map action IDs to an optional `icon`, `off_color`, and `on_color`. Use `off_color` for actions other than toggles. |
+| `actions` | Empty list | Up to four unique supported entity IDs. Actions support lights, switches, input booleans, scripts, buttons, input buttons, covers, and climate entities. Covers only offer opening from the closed state and ask for confirmation. |
+| `action_appearance` | Domain icon and theme fill | Map action IDs to an optional `icon`, `off_color`, and `on_color`. Use `off_color` for actions other than toggles. Climate actions also accept an optional `name`. |
 | `ribbon_default` | `expanded` | Starts Quick Actions `expanded` or `collapsed`. The header toggles it for the current visit. |
 | `widgets` | Empty list | Up to four unique top-level built-in card configurations or entity IDs. |
 | `widget_layout` | `grid` | Responsive side-by-side cards. Use `wide` for a full-width stack at every size. |
@@ -131,6 +131,22 @@ mealie:
 - **URL** is the browser-accessible Mealie base address without a recipe path. **Group** is the segment after `/g/` when you open a recipe in Mealie. For example, use `home` for a recipe URL containing `/g/home/r/`.
 - The card reads only the selected date through Home Assistant’s `mealie.get_mealplan` action when a dinner event is visible. Week and Month share the lookup for five minutes. The action supplies the recipe description directly. A plain meal note or an ambiguous recipe match appears as a regular event. No additional Mealie token is needed.
 - The dashboard browser loads thumbnails directly from the Mealie URL, so the tablet or computer must be able to reach that address on your LAN. Use a trusted HTTPS Mealie URL if you open Home Assistant over HTTPS, since the browser may block HTTP images on an HTTPS page. The recipe opens in a new tab using your normal Mealie login. If the thumbnail fails, the card tries the full-size Mealie image. If both fail, the title, available description and recipe link remain visible. If Home Assistant cannot return the meal plan, check the instance ID and the **Get mealplan** action with the same Home Assistant account used on the dashboard.
+
+## Thermostat Quick Actions
+
+After installing a version with thermostat Quick Actions, select the thermostat in the visual editor or add its entity ID to the card's existing `actions` list.
+
+```yaml
+actions:
+  - switch.living_room
+  - climate.smart_thermostat_250721009116476012
+action_appearance:
+  climate.smart_thermostat_250721009116476012:
+    name: Thermostat
+    icon: mdi:thermostat
+```
+
+The tile displays the indoor temperature and the target reported by Home Assistant. Heat and Cool use one target. Heat/Cool uses separate low and high targets. The buttons use the entity's temperature limits and step, with a one-degree step if none is reported. The active HVAC mode stays as set in Home Assistant. The tile is read-only in other modes or when the entity lacks the required setpoint data. A failed service call appears on the tile, and the readings follow Home Assistant state updates.
 
 ## Quick Widgets
 
