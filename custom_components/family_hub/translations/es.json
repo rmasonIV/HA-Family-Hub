@@ -78,7 +78,10 @@
     "step": {
       "init": {
         "title": "Family Hub",
+        "description": "Elige Family Assistant o AI Briefing en el menú Configurar. Para cambiar los calendarios, el diseño y la apariencia, edita la tarjeta Family Hub Live de tu panel con el editor visual o mediante YAML.",
         "menu_options": {
+          "ai_briefing": "AI Briefing",
+          "family_assistant": "Family Assistant",
           "settings": "Ajustes de Family Hub",
           "reminders": "Recordatorios del calendario",
           "grocy": "Grocy",
@@ -90,7 +93,7 @@
       },
       "settings": {
         "title": "Ajustes de Family Hub",
-        "description": "La mayoría de los ajustes de Family Hub (tema, notificaciones por persona, opciones de Tareas y Recompensas, salvapantallas y más) están en la propia tarjeta de calendario de Family Hub, no aquí. Abre el panel donde está la tarjeta y toca el botón ⚙️ Ajustes en la esquina superior derecha de la tarjeta. (Los recordatorios del calendario, Grocy y las actualizaciones se configuran desde este menú Configurar; consulta las otras opciones aquí.)"
+        "description": "Elige Family Assistant o AI Briefing en el menú Configurar. Para cambiar los calendarios, el diseño y la apariencia, edita la tarjeta Family Hub Live de tu panel con el editor visual o mediante YAML."
       },
       "grocy": {
         "title": "Grocy",

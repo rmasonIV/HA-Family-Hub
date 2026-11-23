@@ -78,7 +78,10 @@
     "step": {
       "init": {
         "title": "Family Hub",
+        "description": "Kies Family Assistant of AI Briefing in het configuratiemenu. Bewerk agenda’s, indeling en uiterlijk van de Family Hub Live-kaart op je dashboard met de visuele editor of via YAML.",
         "menu_options": {
+          "ai_briefing": "AI Briefing",
+          "family_assistant": "Family Assistant",
           "settings": "Family Hub-instellingen",
           "reminders": "Agendaherinneringen",
           "grocy": "Grocy",
@@ -90,7 +93,7 @@
       },
       "settings": {
         "title": "Family Hub-instellingen",
-        "description": "De meeste Family Hub-instellingen - thema, meldingen per persoon, opties voor Klusjes & Beloningen, de schermbeveiliging en meer - staan in de Family Hub-agendakaart zelf, niet hier. Open het dashboard waarop de kaart staat en tik op de knop ⚙️ Instellingen rechtsboven in de kaart. (Agendaherinneringen, Grocy en updates worden juist via dit menu Configureren ingesteld - zie de andere opties hier.)"
+        "description": "Kies Family Assistant of AI Briefing in het configuratiemenu. Bewerk agenda’s, indeling en uiterlijk van de Family Hub Live-kaart op je dashboard met de visuele editor of via YAML."
       },
       "grocy": {
         "title": "Grocy",

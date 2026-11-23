@@ -78,7 +78,10 @@
     "step": {
       "init": {
         "title": "Family Hub",
+        "description": "Scegli Family Assistant o AI Briefing nel menu Configura. Per modificare calendari, disposizione e aspetto, apri la scheda Family Hub Live nella dashboard e usa l’editor visuale o YAML.",
         "menu_options": {
+          "ai_briefing": "AI Briefing",
+          "family_assistant": "Family Assistant",
           "settings": "Impostazioni di Family Hub",
           "reminders": "Promemoria del calendario",
           "grocy": "Grocy",
@@ -90,7 +93,7 @@
       },
       "settings": {
         "title": "Impostazioni di Family Hub",
-        "description": "La maggior parte delle impostazioni di Family Hub - tema, notifiche per persona, opzioni di Faccende e Premi, salvaschermo e altro - si trova nella scheda calendario di Family Hub, non qui. Apri la dashboard in cui è stata aggiunta la scheda e tocca il pulsante ⚙️ Impostazioni in alto a destra nella scheda. (Promemoria del calendario, Grocy e aggiornamenti si configurano invece da questo menu Configura - vedi le altre opzioni qui.)"
+        "description": "Scegli Family Assistant o AI Briefing nel menu Configura. Per modificare calendari, disposizione e aspetto, apri la scheda Family Hub Live nella dashboard e usa l’editor visuale o YAML."
       },
       "grocy": {
         "title": "Grocy",
