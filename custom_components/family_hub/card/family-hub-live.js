@@ -20,6 +20,35 @@ const temperaturePosition = (current, high, low) =>
   Number.isFinite(current) && Number.isFinite(high) && Number.isFinite(low) && high >= low
     ? (high === low ? 50 : Math.min(100, Math.max(0, 100 * (high-current)/(high-low))))
     : null;
+const COMFORT_DEFAULTS = {cold:45, comfortable:70, hot:90};
+function normalizeComfort(value, warnings = []) {
+  const result = {...COMFORT_DEFAULTS};
+  for (const key of Object.keys(result)) {
+    if (value?.[key] == null) continue;
+    const n = Number(value[key]);
+    if (Number.isFinite(n) && n >= -40 && n <= 140) result[key] = n;
+    else warnings.push('temperature_comfort.'+key+' must be between -40 and 140°F.');
+  }
+  if (!(result.cold < result.comfortable && result.comfortable < result.hot)) {
+    warnings.push('Temperature comfort thresholds must increase.');
+    return {...COMFORT_DEFAULTS};
+  }
+  return result;
+}
+function comfortStops(low, high, unit, settings) {
+  const anchors = [[-40,'#143073'],[32,'#1c4ca5'],[settings.cold,'#3784d7'],
+    [settings.comfortable,'#63b770'],[settings.hot,'#eb9136'],[100,'#9b2431'],[140,'#410e23']]
+    .sort((a,b)=>a[0]-b[0]);
+  const color = value => {
+    const f = unit === '°C' ? value*9/5+32 : value;
+    let i = 0;
+    while (i < anchors.length-2 && f > anchors[i+1][0]) i++;
+    const [a,ca] = anchors[i], [b,cb] = anchors[i+1];
+    const t = Math.max(0,Math.min(1,(f-a)/(b-a||1)));
+    return '#'+[1,3,5].map(k=>Math.round(parseInt(ca.slice(k,k+2),16)*(1-t)+parseInt(cb.slice(k,k+2),16)*t).toString(16).padStart(2,'0')).join('');
+  };
+  return Array.from({length:17},(_,i)=>color(low+(high-low)*i/16)+' '+(i*100/16)+'%').join(',');
+}
 const ACTION_ICONS = {
   light:'mdi:lightbulb', switch:'mdi:toggle-switch', input_boolean:'mdi:toggle-switch',
   script:'mdi:play-circle-outline', button:'mdi:gesture-tap-button',
@@ -144,6 +173,7 @@ function normalizeConfig(input, warnings = []) {
     calendars,
     daily_briefing:typeof config.daily_briefing === "boolean" ? config.daily_briefing : undefined,
     appearance:normalizeAppearance(config.appearance, warnings),
+    temperature_comfort:normalizeComfort(config.temperature_comfort, warnings),
     mealie:normalizeMealie(config.mealie, calendars, warnings),
     actions:list('actions', id => isEntityId(id) && Object.hasOwn(ACTIONS,domainOf(id)) && id, MAX_ITEMS),
     widgets:list('widgets', widgetKey, MAX_ITEMS),
@@ -859,12 +889,14 @@ function mount(root, host) {
     const current = weatherEntity()?.attributes.temperature;
     const position = isToday ? temperaturePosition(current, high, low) : null;
     const unit = temperatureUnit();
-    const wide = high - low >= (unit === '°F' ? 18 : 10);
+    const stops = Number.isFinite(low) && Number.isFinite(high)
+      ? comfortStops(Math.min(low,high),Math.max(low,high),unit,host.config.temperature_comfort) : '';
+    const gradientStyle = 'background:linear-gradient(to '+(index === null ? 'right' : 'top')+','+stops+')';
     const temperatureLabel = unit ? ' '+escapeText(unit) : ' degrees';
     const temperature = (name, value) => Number.isFinite(value)
       ? `<span aria-label="${name} ${value}${temperatureLabel}">${value}${escapeText(unit ?? '°')}</span>` : '';
     const range = Number.isFinite(high) && Number.isFinite(low)
-      ? `<span class="range ${wide ? 'wide-range' : ''}" aria-hidden="true">
+      ? `<span class="range" style="${gradientStyle}" aria-hidden="true">
         ${isToday ? `<span class="current" data-high="${high}" data-low="${low}" ${position === null ? 'hidden' : ''} style="--position:${position ?? 50}%"></span>` : ''}
       </span>` : '';
     const highLabel = temperature('High', high);
@@ -1686,6 +1718,25 @@ class FamilyHubLiveEditor extends HTMLElement {
       defaults.append(row);
     }
     this.append(defaults);
+
+    const comfort = document.createElement('fieldset');
+    const comfortHeading = document.createElement('legend');
+    comfortHeading.textContent = 'Temperature comfort thresholds (°F)';
+    comfort.append(comfortHeading);
+    for (const [key,title] of [['cold','Cold'],['comfortable','Comfortable'],['hot','Hot']]) {
+      const row = document.createElement('p');
+      const label = document.createElement('label');
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '-40';
+      input.max = '140';
+      input.value = String(normalized.temperature_comfort[key]);
+      input.onchange = () => save('temperature_comfort', {...normalized.temperature_comfort,[key]:Number(input.value)});
+      label.append(title+' ',input);
+      row.append(label);
+      comfort.append(row);
+    }
+    this.append(comfort);
 
     const appearance = document.createElement('fieldset');
     const appearanceHeading = document.createElement('legend');
