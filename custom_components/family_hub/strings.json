@@ -101,6 +101,7 @@
       },
       "init": {
         "title": "Family Hub",
+        "description": "Choose Family Assistant or AI Briefing in the Configure menu. For calendars, layout, and appearance, edit the Family Hub Live card on your dashboard using the visual editor or YAML.",
         "menu_options": {
           "settings": "Family Hub Settings",
           "ai_briefing": "AI Briefing",
@@ -115,7 +116,7 @@
       },
       "settings": {
         "title": "Family Hub Settings",
-        "description": "Most Family Hub settings - theme, per-person notifications, Chores & Rewards options, the screensaver, and more - live inside the Family Hub calendar card itself, not here. Open the dashboard where the card is added, and tap the ⚙️ Settings button in the card's top-right corner. (Calendar reminders, Grocy, and updates are configured from this Configure menu instead - see the other options here.)"
+        "description": "Choose Family Assistant or AI Briefing in the Configure menu. For calendars, layout, and appearance, edit the Family Hub Live card on your dashboard using the visual editor or YAML."
       },
       "grocy": {
         "title": "Grocy",

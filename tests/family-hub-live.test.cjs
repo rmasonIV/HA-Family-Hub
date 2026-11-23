@@ -586,7 +586,15 @@ test('visual editor changes one appearance setting and preserves the other card 
 test('Assistant reviews a text-only proposal and confirms just its ID once', async t => {
   const requests = [];
   let resolveSave;
-  const {find, window} = setup(t, {calendars:['calendar.family']}, {
+  let calendarEvents = [];
+  let calendarReads = 0;
+  const event = {summary:'<img src=x>', start_date_time:'2026-11-27T18:00:00-06:00',
+    end_date_time:'2026-11-27T20:00:00-06:00', description:'Bring water'};
+  const {find, window} = setup(t, {calendars:['calendar.family'], default_view:'month_details'}, {
+    async callApi() {
+      calendarReads++;
+      return calendarEvents;
+    },
     async callWS(message) {
       switch (message.type) {
         case 'family_hub/assistant/status':
@@ -595,9 +603,7 @@ test('Assistant reviews a text-only proposal and confirms just its ID once', asy
           requests.push(message);
           return {
             status:'proposal', id:'test-id', calendar:'Family', timezone:'America/Chicago',
-            default_minutes:60,
-            event:{summary:'<img src=x>', start_date_time:'2026-11-20T18:00:00-06:00',
-              end_date_time:'2026-11-20T19:00:00-06:00', description:'Bring water'},
+            default_minutes:null, event,
           };
         case 'family_hub/assistant/confirm':
           requests.push(message);
@@ -615,21 +621,44 @@ test('Assistant reviews a text-only proposal and confirms just its ID once', asy
   await tick();
   assert.equal(find('#assistant-open').hidden, false);
   find('#assistant-open').click();
-  find('#assistant-request').value = 'Practice at 6 PM today';
+  find('#assistant-request').value = 'Practice Friday at 6 PM for two hours';
   find('#assistant-propose').click();
   await tick();
   assert.equal(requests.length, 1);
   const preview = find('#assistant-preview');
   assert.equal(preview.querySelector('img'), null);
-  assert.match(preview.textContent, /<img src=x>[\s\S]*Family[\s\S]*60 minutes[\s\S]*Bring water/);
+  assert.match(preview.textContent, /<img src=x>[\s\S]*Family[\s\S]*120 minutes[\s\S]*Bring water/);
   find('#assistant-confirm').click();
   find('#assistant-confirm').click();
   assert.deepEqual(JSON.parse(JSON.stringify(requests[1])), {
     type:'family_hub/assistant/confirm', proposal_id:'test-id',
   });
   assert.equal(requests.length, 2);
-  resolveSave({status:'created'});
+  const readsBeforeConfirmation = calendarReads;
+  const timers = new Map();
+  window.setTimeout = (callback, delay) => {
+    const id = timers.size + 1;
+    timers.set(id, {callback, delay});
+    return id;
+  };
+  window.clearTimeout = id => timers.delete(id);
+  resolveSave({status:'created', calendar_id:'calendar.family', event});
   await tick();
   assert.equal(find('#assistant-dialog').open, false);
   assert.equal(find('#assistant-notice').textContent, 'Event created.');
+  assert.ok(calendarReads > readsBeforeConfirmation);
+  find('[data-day="27"]').click();
+  assert.match(find('#day-events').textContent, /<img src=x>/);
+  assert.equal(find('#day-events').querySelector('img'), null);
+
+  const retry = [...timers.values()].find(timer => timer.delay === 2000);
+  assert.ok(retry);
+  calendarEvents = [{summary:event.summary, description:event.description,
+    start:{dateTime:'2026-11-28T00:00:00Z'}, end:{dateTime:'2026-11-28T02:00:00Z'}}];
+  window.Date.now = () => Date.parse('2026-11-21T02:00:02Z');
+  retry.callback();
+  await tick();
+  assert.equal(find('#day-events').textContent.split(event.summary).length - 1, 1);
+  assert.ok(![...timers.values()].some(timer => timer.delay === 3000));
+  assert.equal(requests.length, 2);
 });

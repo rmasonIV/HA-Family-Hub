@@ -78,7 +78,10 @@
     "step": {
       "init": {
         "title": "Family Hub",
+        "description": "Choisissez Family Assistant ou AI Briefing dans le menu Configurer. Pour modifier les calendriers, la disposition et l’apparence, utilisez l’éditeur visuel ou le YAML de la carte Family Hub Live dans votre tableau de bord.",
         "menu_options": {
+          "ai_briefing": "AI Briefing",
+          "family_assistant": "Family Assistant",
           "settings": "Paramètres de Family Hub",
           "reminders": "Rappels de calendrier",
           "grocy": "Grocy",
@@ -90,7 +93,7 @@
       },
       "settings": {
         "title": "Paramètres de Family Hub",
-        "description": "La plupart des paramètres de Family Hub - thème, notifications par personne, options Corvées et Récompenses, économiseur d'écran, etc. - se trouvent dans la carte calendrier Family Hub elle-même, pas ici. Ouvrez le tableau de bord où la carte est ajoutée et touchez le bouton ⚙️ Paramètres en haut à droite de la carte. (Les rappels de calendrier, Grocy et les mises à jour se configurent plutôt depuis ce menu Configurer - voir les autres options ici.)"
+        "description": "Choisissez Family Assistant ou AI Briefing dans le menu Configurer. Pour modifier les calendriers, la disposition et l’apparence, utilisez l’éditeur visuel ou le YAML de la carte Family Hub Live dans votre tableau de bord."
       },
       "grocy": {
         "title": "Grocy",

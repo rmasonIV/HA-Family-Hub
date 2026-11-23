@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from homeassistant.auth.permissions.const import POLICY_CONTROL, POLICY_READ
 from homeassistant.components import websocket_api
 from homeassistant.components.calendar import CalendarEntityFeature
+from homeassistant.components.calendar.const import DATA_COMPONENT
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
@@ -23,6 +24,7 @@ OPTION = "family_assistant"
 VERSION = 1
 DEFAULT_MINUTES = 60
 TTL = 300
+CALENDAR_REFRESH_DELAYS = (0, 3, 10)
 _LOGGER = logging.getLogger(__name__)
 
 PROMPT_V1 = """Extract exactly one new, non-recurring calendar event.
@@ -247,6 +249,35 @@ async def ws_propose(hass, connection, msg):
     })
 
 
+async def _refresh_calendar(hass, proposal):
+    """Refresh the target's event data and retry while the provider catches up."""
+    fields = proposal.fields
+    if "start_date" in fields:
+        start, end = (date.fromisoformat(fields[key]) for key in ("start_date", "end_date"))
+        start_query, end_query = (dt_util.start_of_local_day(day) for day in (start, end))
+    else:
+        start, end = (datetime.fromisoformat(fields[key]) for key in ("start_date_time", "end_date_time"))
+        start_query, end_query = start, end
+
+    for delay in CALENDAR_REFRESH_DELAYS:
+        if delay:
+            await asyncio.sleep(delay)
+        component = hass.data.get(DATA_COMPONENT)
+        entity = component.get_entity(proposal.entity_id) if component else None
+        if entity is None:
+            return
+        try:
+            async with asyncio.timeout(5):
+                await entity.async_update_ha_state(force_refresh=True)
+                events = await entity.async_get_events(hass, start_query, end_query)
+            if any(event.start == start and event.end == end and event.summary == fields["summary"]
+                   and (event.description or "") == fields.get("description", "")
+                   and (event.location or "") == fields.get("location", "") for event in events):
+                return
+        except Exception:
+            _LOGGER.debug("Family Assistant calendar refresh failed for %s", proposal.entity_id, exc_info=True)
+
+
 @websocket_api.websocket_command({
     vol.Required("type"): "family_hub/assistant/confirm",
     vol.Required("proposal_id"): vol.All(str, vol.Length(min=32, max=32)),
@@ -282,6 +313,9 @@ async def ws_confirm(hass, connection, msg):
             proposal.status = "uncertain"
         else:
             proposal.status = "created"
+            hass.async_create_background_task(
+                _refresh_calendar(hass, proposal), "family_hub_assistant_calendar_refresh",
+            )
         result = proposal.status
         proposal.expires = monotonic() + TTL
         _LOGGER.info("Family Assistant calendar write %s for HA user %s on %s",
@@ -294,7 +328,10 @@ async def ws_confirm(hass, connection, msg):
                 }, context=context)
             except Exception:
                 _LOGGER.warning("Family Assistant could not record calendar creation in Activity")
-    connection.send_result(msg["id"], {"status": result})
+    response = {"status": result}
+    if result == "created" and proposal.entity_id in calendars:
+        response.update(calendar_id=proposal.entity_id, event=proposal.fields)
+    connection.send_result(msg["id"], response)
 
 
 @websocket_api.websocket_command({

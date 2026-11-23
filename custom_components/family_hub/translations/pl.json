@@ -78,7 +78,10 @@
     "step": {
       "init": {
         "title": "Family Hub",
+        "description": "W menu konfiguracji wybierz Family Assistant lub AI Briefing. Kalendarze, układ i wygląd zmienisz w karcie Family Hub Live na swoim pulpicie za pomocą edytora wizualnego lub YAML.",
         "menu_options": {
+          "ai_briefing": "AI Briefing",
+          "family_assistant": "Family Assistant",
           "settings": "Ustawienia Family Hub",
           "reminders": "Przypomnienia kalendarza",
           "grocy": "Grocy",
@@ -90,7 +93,7 @@
       },
       "settings": {
         "title": "Ustawienia Family Hub",
-        "description": "Większość ustawień Family Hub - motyw, powiadomienia dla poszczególnych osób, opcje Obowiązków i Nagród, wygaszacz ekranu i inne - znajduje się w samej karcie kalendarza Family Hub, a nie tutaj. Otwórz dashboard, na którym jest karta, i dotknij przycisku ⚙️ Ustawienia w prawym górnym rogu karty. (Przypomnienia kalendarza, Grocy i aktualizacje konfiguruje się natomiast w tym menu Konfiguruj - zobacz pozostałe opcje.)"
+        "description": "W menu konfiguracji wybierz Family Assistant lub AI Briefing. Kalendarze, układ i wygląd zmienisz w karcie Family Hub Live na swoim pulpicie za pomocą edytora wizualnego lub YAML."
       },
       "grocy": {
         "title": "Grocy",

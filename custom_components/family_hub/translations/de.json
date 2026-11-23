@@ -78,7 +78,10 @@
     "step": {
       "init": {
         "title": "Family Hub",
+        "description": "Wähle im Konfigurationsmenü Family Assistant oder AI Briefing. Kalender, Layout und Darstellung änderst du in der Family Hub Live-Karte auf deinem Dashboard im visuellen Editor oder per YAML.",
         "menu_options": {
+          "ai_briefing": "AI Briefing",
+          "family_assistant": "Family Assistant",
           "settings": "Family-Hub-Einstellungen",
           "reminders": "Kalendererinnerungen",
           "grocy": "Grocy",
@@ -90,7 +93,7 @@
       },
       "settings": {
         "title": "Family-Hub-Einstellungen",
-        "description": "Die meisten Family-Hub-Einstellungen - Theme, Benachrichtigungen pro Person, Optionen für Aufgaben & Belohnungen, der Bildschirmschoner und mehr - befinden sich in der Family-Hub-Kalenderkarte selbst, nicht hier. Öffne das Dashboard, auf dem die Karte liegt, und tippe oben rechts in der Karte auf ⚙️ Einstellungen. (Kalendererinnerungen, Grocy und Updates werden stattdessen über dieses Konfigurieren-Menü eingerichtet - siehe die anderen Optionen hier.)"
+        "description": "Wähle im Konfigurationsmenü Family Assistant oder AI Briefing. Kalender, Layout und Darstellung änderst du in der Family Hub Live-Karte auf deinem Dashboard im visuellen Editor oder per YAML."
       },
       "grocy": {
         "title": "Grocy",

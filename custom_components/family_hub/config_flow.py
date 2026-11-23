@@ -582,11 +582,7 @@ def _describe_settings_history_snapshot(snapshot: dict[str, Any], now) -> str:
 
 
 class FamilyHubOptionsFlow(config_entries.OptionsFlow):
-    """Configure reminders, send a test notification, install an update, or
-    get pointed at the card's own Settings modal - all live here
-    since this is where an admin would already be looking (Settings >
-    Devices & Services > Family Hub > Configure), not a separate sidebar
-    panel."""
+    """Configure the integration and direct users to the dashboard card editor."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         return self.async_show_menu(
