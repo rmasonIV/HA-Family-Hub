@@ -662,3 +662,116 @@ test('Assistant reviews a text-only proposal and confirms just its ID once', asy
   assert.ok(![...timers.values()].some(timer => timer.delay === 3000));
   assert.equal(requests.length, 2);
 });
+
+const thermostatId = 'climate.smart_thermostat_250721009116476012';
+const switchId = 'switch.living_room';
+
+function setupThermostat(t, callService) {
+  const {card, root, hass} = setup(t, {
+    actions:[switchId, thermostatId],
+    action_appearance:{[thermostatId]:{name:'Thermostat'}}
+  }, {callService});
+  const attributes = {
+    friendly_name:'Wall Thermostat', current_temperature:19.5, temperature:20,
+    min_temp:18, max_temp:21, target_temp_step:0.5, temperature_unit:'°C',
+    supported_features:3, hvac_modes:['heat','cool','heat_cool','off','auto']
+  };
+  function publish(state, overrides = {}) {
+    card.hass = {...hass, states:{...hass.states,
+      [switchId]:{state:'off', attributes:{friendly_name:'Living room'}},
+      [thermostatId]:{state, attributes:{...attributes, ...overrides}}
+    }};
+  }
+  publish('heat');
+  const tile = root.querySelector('.quick-climate');
+  const buttons = key => [...tile.querySelectorAll('.quick-climate-setpoint')][key].querySelectorAll('button');
+  return {tile, buttons, publish, toggle:root.querySelector('button.quick-control')};
+}
+
+test('thermostat displays reported values, applies its step and limits, and preserves switch toggles', async t => {
+  const requests = [];
+  let finish;
+  const {buttons, tile, toggle, publish} = setupThermostat(t, (...args) => {
+    requests.push(JSON.parse(JSON.stringify(args)));
+    if (args[0] === 'climate') return new Promise(resolve => { finish = resolve; });
+  });
+  const [decrease, increase] = buttons(0);
+  assert.equal(tile.getAttribute('aria-label'), 'Thermostat');
+  assert.match(tile.textContent, /Indoor: 19.5°C.*Target: 20°C/);
+  assert.equal(increase.getAttribute('aria-label'), 'Increase Thermostat target');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+  toggle.click();
+  increase.click();
+  assert.equal(decrease.disabled, true);
+  assert.equal(increase.disabled, true);
+  increase.click();
+  assert.deepEqual(requests, [
+    ['switch','toggle',{entity_id:switchId}],
+    ['climate','set_temperature',{entity_id:thermostatId, temperature:20.5}]
+  ]);
+  finish();
+  await tick();
+  assert.match(tile.textContent, /Target: 20°C/);
+  publish('heat', {temperature:21, current_temperature:20});
+  assert.match(tile.textContent, /Indoor: 20°C.*Target: 21°C/);
+  assert.equal(increase.disabled, true);
+  assert.equal(decrease.disabled, false);
+  publish('heat', {temperature:18});
+  assert.equal(decrease.disabled, true);
+});
+
+test('thermostat supports range mode, read-only modes, missing features, and service failures', async t => {
+  const requests = [];
+  const {buttons, tile, publish} = setupThermostat(t, async (...args) => {
+    requests.push(JSON.parse(JSON.stringify(args)));
+    if (requests.length === 1) throw new Error('Service unavailable');
+  });
+  for (const mode of ['off','auto','unavailable','unknown']) {
+    publish(mode);
+    assert.equal(buttons(0)[1].disabled, true, mode);
+  }
+  assert.match(tile.textContent, /Unavailable/);
+  publish('cool', {hvac_modes:['heat']});
+  assert.equal(buttons(0)[1].disabled, true);
+  publish('cool', {supported_features:2});
+  assert.equal(buttons(0)[1].disabled, true);
+  publish('cool', {temperature:null});
+  assert.equal(buttons(0)[1].disabled, true);
+  publish('heat_cool', {target_temp_low:19, target_temp_high:20, temperature_unit:undefined});
+  assert.match(tile.textContent, /Low target: 19°F.*High target: 20°F/);
+  const increaseLow = buttons(1)[1];
+  increaseLow.click();
+  await tick();
+  const status = tile.querySelector('[role=status]');
+  assert.equal(status.textContent, 'Could not set the temperature.');
+  assert.equal(status.hidden, false);
+  assert.equal(increaseLow.disabled, false);
+  increaseLow.click();
+  await tick();
+  assert.equal(status.hidden, true);
+  assert.deepEqual(requests, Array.from({length:2}, () =>
+    ['climate','set_temperature',{entity_id:thermostatId, target_temp_low:19.5, target_temp_high:20}]
+  ));
+  publish('heat_cool', {target_temp_low:19.5, target_temp_high:20});
+  assert.equal(increaseLow.disabled, true);
+  assert.equal(buttons(2)[0].disabled, true);
+});
+
+test('the Quick Actions editor offers climate entities alongside switches', t => {
+  const {window, hass} = setup(t, {actions:[switchId]});
+  const editor = window.customElements.get('family-hub-live').getConfigElement();
+  editor.setConfig({actions:[switchId]});
+  editor.hass = {...hass, states:{...hass.states,
+    [switchId]:{attributes:{friendly_name:'Living room'}},
+    [thermostatId]:{attributes:{friendly_name:'Thermostat'}}
+  }};
+  const picker = editor.querySelector('[aria-label="Choose quick actions entity"]');
+  assert.ok([...picker.options].some(option => option.value === thermostatId));
+  assert.ok(![...picker.options].some(option => option.value === switchId));
+  let config;
+  editor.addEventListener('config-changed', event => { config = event.detail.config; });
+  picker.value = thermostatId;
+  picker.dispatchEvent(new window.Event('change'));
+  picker.nextElementSibling.click();
+  assert.deepEqual(Array.from(config.actions), [switchId, thermostatId]);
+});
