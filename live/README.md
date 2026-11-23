@@ -32,7 +32,7 @@ To test a development checkout on a Home Assistant installation that already has
 
 Click a calendar legend button to show just that calendar. Click a different button to switch calendars, or click the selected button again to restore all calendars. The choice follows you between Week and Month and applies to their day details. The card starts with all calendars visible.
 
-In Week, use **‹** and **›** to move one week at a time. **This week** jumps back to the current week. The date range uses your configured Sunday or Monday start, and the card keeps the week you are browsing through a refresh or view switch. Forecast icons appear on dates with data from your provider.
+In Week, use **‹** and **›** to move one week at a time. **This week** jumps back to the current week. The date range uses your configured Sunday or Monday start, and the card keeps the week you are browsing through a refresh or view switch. Forecast icons appear on dates with data from your provider. In Month, the current week has a slightly taller minimum row height, using the same configured week start and Home Assistant time zone.
 
 In Month, today's date has its own marker and the selected date has a tinted cell. Forecast icons appear only for dates with data. Week, Month, and the detail pane use bundled static color icons from [Meteocons](https://github.com/basmilius/meteocons). Select a date to see its events and a full-width forecast panel with the condition, low, high, and temperature gradient. Close the pane with × or by selecting the same date again. The bar uses yellow for spans of at least 18°F or 10°C, and today's marker shows the current temperature when available. Week forecast icons open additional forecast details. Dates use Home Assistant's configured time zone, and temperature values and units come from Home Assistant.
 
@@ -146,7 +146,7 @@ action_appearance:
     icon: mdi:thermostat
 ```
 
-The tile displays the indoor temperature and the target reported by Home Assistant. Heat and Cool use one target. Heat/Cool uses separate low and high targets. The buttons use the entity's temperature limits and step, with a one-degree step if none is reported. The active HVAC mode stays as set in Home Assistant. The tile is read-only in other modes or when the entity lacks the required setpoint data. A failed service call appears on the tile, and the readings follow Home Assistant state updates.
+Quick Actions tiles size to their contents and wrap on narrow dashboards. The thermostat shows a smaller indoor reading beneath its name. Tap the name or the indoor reading to open Home Assistant’s climate details. Use the adjacent 44 × 44 px minus and plus buttons to adjust the target displayed between them. Heat and Cool use one stepper. Heat/Cool stacks separate low and high steppers. The buttons use the entity's temperature limits and step, with a one-degree step if none is reported. The active HVAC mode stays as set in Home Assistant. The tile is read-only in other modes or when the entity lacks the required setpoint data. A failed service call appears on the tile, and the readings follow Home Assistant state updates.
 
 ## Quick Widgets
 

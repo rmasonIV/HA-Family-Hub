@@ -102,6 +102,17 @@ test('one HA-zone forecast feeds Week, Month and the selected day without losing
   assert.equal(stops(), 1);
 });
 
+test('Month emphasizes the current week using the configured start and HA date', t => {
+  const {root, find} = setup(t, {default_view:'month', week_start:'sunday'});
+  const emphasizedDays = () => [...root.querySelectorAll('.month-day.is-current-week')]
+    .map(day => Number(day.dataset.day));
+  assert.deepEqual(emphasizedDays(), [15, 16, 17, 18, 19, 20, 21]);
+  find('[data-day="25"]').click();
+  assert.deepEqual(emphasizedDays(), [15, 16, 17, 18, 19, 20, 21]);
+  find('#next-month').click();
+  assert.deepEqual(emphasizedDays(), []);
+});
+
 test('Month with details opens today, follows a day rollover, and allows closing or picking another date', async t => {
   const {window, card, find} = setup(t, {default_view:'month_details'});
   assert.equal(find('#month').hidden, false);
@@ -685,7 +696,7 @@ function setupThermostat(t, callService) {
   publish('heat');
   const tile = root.querySelector('.quick-climate');
   const buttons = key => [...tile.querySelectorAll('.quick-climate-setpoint')][key].querySelectorAll('button');
-  return {tile, buttons, publish, toggle:root.querySelector('button.quick-control')};
+  return {card, tile, buttons, publish, toggle:root.querySelector('button.quick-control')};
 }
 
 test('thermostat displays reported values, applies its step and limits, and preserves switch toggles', async t => {
@@ -697,7 +708,7 @@ test('thermostat displays reported values, applies its step and limits, and pres
   });
   const [decrease, increase] = buttons(0);
   assert.equal(tile.getAttribute('aria-label'), 'Thermostat');
-  assert.match(tile.textContent, /Indoor: 19.5°C.*Target: 20°C/);
+  assert.match(tile.textContent, /Indoor 19.5°C.*Target20°C/);
   assert.equal(increase.getAttribute('aria-label'), 'Increase Thermostat target');
   assert.equal(toggle.getAttribute('aria-pressed'), 'false');
   toggle.click();
@@ -711,13 +722,29 @@ test('thermostat displays reported values, applies its step and limits, and pres
   ]);
   finish();
   await tick();
-  assert.match(tile.textContent, /Target: 20°C/);
+  assert.match(tile.textContent, /Target20°C/);
   publish('heat', {temperature:21, current_temperature:20});
-  assert.match(tile.textContent, /Indoor: 20°C.*Target: 21°C/);
+  assert.match(tile.textContent, /Indoor 20°C.*Target21°C/);
   assert.equal(increase.disabled, true);
   assert.equal(decrease.disabled, false);
   publish('heat', {temperature:18});
   assert.equal(decrease.disabled, true);
+});
+
+test('the thermostat heading opens HA details independently of its stepper', async t => {
+  const details = [];
+  const requests = [];
+  const {card, tile, buttons} = setupThermostat(t, (...args) => requests.push(args));
+  card.addEventListener('hass-more-info', event => details.push(event.detail.entityId));
+  const heading = tile.querySelector('.quick-climate-heading');
+  assert.equal(heading.getAttribute('aria-label'), 'Open Thermostat details. Indoor 19.5°C');
+  heading.click();
+  assert.deepEqual(details, [thermostatId]);
+  assert.equal(requests.length, 0);
+  buttons(0)[1].click();
+  await tick();
+  assert.equal(requests.length, 1);
+  assert.deepEqual(details, [thermostatId]);
 });
 
 test('thermostat supports range mode, read-only modes, missing features, and service failures', async t => {
@@ -738,7 +765,7 @@ test('thermostat supports range mode, read-only modes, missing features, and ser
   publish('cool', {temperature:null});
   assert.equal(buttons(0)[1].disabled, true);
   publish('heat_cool', {target_temp_low:19, target_temp_high:20, temperature_unit:undefined});
-  assert.match(tile.textContent, /Low target: 19°F.*High target: 20°F/);
+  assert.match(tile.textContent, /Low target19°F.*High target20°F/);
   const increaseLow = buttons(1)[1];
   increaseLow.click();
   await tick();
