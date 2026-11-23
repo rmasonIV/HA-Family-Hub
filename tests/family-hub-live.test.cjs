@@ -81,7 +81,7 @@ test('one HA-zone forecast feeds Week, Month and the selected day without losing
   assert.equal(find('#day-weather .forecast-condition').textContent, 'Partly cloudy');
   assert.deepEqual([...find('#day-weather .forecast-temperatures').children].map(node => node.textContent.trim()),
     ['50°F', '', '72°F']);
-  assert.ok(find('#day-weather .wide-range .current'));
+  assert.ok(find('#day-weather .range .current'));
   card.hass = {...hass, states:{...hass.states, 'weather.home':{attributes:{temperature:72}}}};
   assert.equal(find('#day-weather .current').style.getPropertyValue('--position'), '0%');
   find('[data-day="22"]').click();
@@ -90,7 +90,7 @@ test('one HA-zone forecast feeds Week, Month and the selected day without losing
   assert.match(find('#day-weather').textContent, /61°F/);
   assert.equal(find('#day-weather .range'), null);
   find('#week-view').click();
-  assert.ok(find('#week-days .wide-range'));
+  assert.ok(find('#week-days .weather .range'));
   assert.equal(find('#week-days .forecast-icon').src, partlyCloudy.src);
   assert.equal(callbacks.length, 1);
   find('#month-view').click();
