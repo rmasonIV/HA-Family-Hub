@@ -5,9 +5,10 @@ from datetime import datetime
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
+from homeassistant.components.calendar.const import DATA_COMPONENT
 from homeassistant.components.calendar.services import CREATE_EVENT_SCHEMA
 from homeassistant.core import Context, HomeAssistant
 
@@ -95,6 +96,42 @@ class AssistantTests(IsolatedAsyncioTestCase):
         self.assertEqual(self.connection.result["status"], "created")
         await assistant.ws_confirm.__wrapped__(self.hass, self.connection, message)
         self.assertEqual(self.connection.result["status"], "created")
+        self.assertEqual(self.service.await_count, 2)
+
+    async def test_confirm_refreshes_target_when_provider_listing_is_delayed(self):
+        preview = await self.propose()
+        fields = preview["event"]
+        event = SimpleNamespace(
+            summary=fields["summary"], description=fields["description"], location=None,
+            start=datetime.fromisoformat(fields["start_date_time"]),
+            end=datetime.fromisoformat(fields["end_date_time"]),
+        )
+        visible = asyncio.Event()
+
+        async def get_events(hass, start, end):
+            self.assertEqual((start, end), (event.start, event.end))
+            if entity.async_update_ha_state.await_count == 2:
+                visible.set()
+                return [event]
+            return []
+
+        entity = SimpleNamespace(async_update_ha_state=AsyncMock(), async_get_events=get_events)
+
+        def get_entity(entity_id):
+            self.assertEqual(entity_id, "calendar.family")
+            return entity
+
+        self.hass.data[DATA_COMPONENT] = SimpleNamespace(get_entity=get_entity)
+        with patch.object(assistant, "CALENDAR_REFRESH_DELAYS", (0, 0, 0)):
+            await assistant.ws_confirm.__wrapped__(
+                self.hass, self.connection, {"id": 2, "proposal_id": preview["id"]},
+            )
+            self.assertEqual(self.connection.result, {
+                "status": "created", "calendar_id": "calendar.family", "event": fields,
+            })
+            await asyncio.wait_for(visible.wait(), 1)
+        self.assertEqual(entity.async_update_ha_state.await_count, 2)
+        entity.async_update_ha_state.assert_awaited_with(force_refresh=True)
         self.assertEqual(self.service.await_count, 2)
 
     async def test_permissions_and_cancel_are_enforced_before_writing(self):

@@ -722,16 +722,18 @@ function mountAssistant(root, host, reloadCalendar) {
 
   confirm.addEventListener('click', async () => {
     if (!proposal || saving) return;
+    const current = session;
     saving = confirm.disabled = edit.disabled = el('close').disabled = true;
     status.textContent = 'Creating event…';
     try {
       const result = await call('confirm', {proposal_id:proposal.id});
+      if (current !== session) return;
       if (result.status === 'created') {
         proposal = undefined;
         dialog.close();
         el('notice').textContent = 'Event created.';
         el('notice').hidden = false;
-        reloadCalendar();
+        reloadCalendar(result);
         return;
       }
       status.textContent = messages[result.status] ?? messages.uncertain;
@@ -755,6 +757,7 @@ function mountAssistant(root, host, reloadCalendar) {
     el('open').focus();
   });
   return {refresh, stop() {
+    session++;
     statusRequest++;
     if (dialog.open && !saving) dialog.close();
   }};
@@ -922,8 +925,9 @@ function mount(root, host) {
   function dayEvents(date) {
     const start = time.midnight(date);
     const next = time.midnight(addDays(date, 1));
-    return calendarEvents.filter(event => (!selectedCalendar || event.calendarId === selectedCalendar)
-      && event.start < next && event.end > start);
+    const pending = [...confirmedEvents.values()].map(({event}) => event);
+    return [...calendarEvents, ...pending].filter(event => (!selectedCalendar || event.calendarId === selectedCalendar)
+      && event.start < next && event.end > start).sort((a,b) => a.start-b.start);
   }
 
   function eventsOn(date) {
@@ -931,7 +935,47 @@ function mount(root, host) {
         location:event.location, description:event.description, calendarId:event.calendarId}]);
   }
 
-  const assistant = mountAssistant(root, host, () => loadCalendar());
+  const confirmedEvents = new Map();
+  const eventKey = event => JSON.stringify([
+    event.calendarId, event.allDay, +event.start, +event.end,
+    event.summary, event.description ?? '', event.location ?? '',
+  ]);
+  let retryTimer;
+  const endpoint = value => value.dateTime ? new Date(value.dateTime) : time.midnight(new Date(value.date));
+
+  function scheduleCalendarRefresh() {
+    window.clearTimeout(retryTimer);
+    if (!confirmedEvents.size) return;
+    const next = Math.min(...[...confirmedEvents.values()].map(entry => entry.next));
+    retryTimer = window.setTimeout(() => {
+      for (const [key, entry] of confirmedEvents) {
+        if (entry.next > Date.now()) continue;
+        const delay = entry.delays.shift();
+        if (delay) entry.next = Date.now() + delay;
+        else confirmedEvents.delete(key);
+      }
+      loadCalendar();
+      scheduleCalendarRefresh();
+    }, Math.max(0, next - Date.now()));
+  }
+
+  const assistant = mountAssistant(root, host, ({calendar_id: calendarId, event: fields}) => {
+    if (fields && colors.has(calendarId)) {
+      const allDay = Boolean(fields.start_date);
+      const event = {
+        calendarId, allDay, summary:fields.summary, description:fields.description, location:fields.location,
+        start:endpoint({date:fields.start_date, dateTime:fields.start_date_time}),
+        end:endpoint({date:fields.end_date, dateTime:fields.end_date_time}),
+      };
+      const key = eventKey(event);
+      // The provider can return a matching event before the confirmation response arrives.
+      if (!calendarEvents.some(item => eventKey(item) === key)) {
+        confirmedEvents.set(key, {event, next:Date.now() + 2000, delays:[3000, 10000, 15000, 30000]});
+        scheduleCalendarRefresh();
+      }
+    }
+    loadCalendar();
+  });
   async function loadCalendar() {
     const current = ++request;
     const {hass, config} = host;
@@ -940,6 +984,8 @@ function mount(root, host) {
       zone = nextZone;
       time = calendarTime(zone);
       calendarEvents = [];
+      confirmedEvents.clear();
+      scheduleCalendarRefresh();
     }
     const newToday = time.dayAt(Date.now());
     if (+today !== +newToday) {
@@ -976,7 +1022,6 @@ function mount(root, host) {
     const results = await Promise.allSettled(config.calendars.flatMap(id => ranges.map(async ([from,to]) => {
       const query = new URLSearchParams({start:time.midnight(from).toISOString(), end:time.midnight(to).toISOString()});
       const events = await hass.callApi('GET', 'calendars/'+encodeURIComponent(id)+'?'+query);
-      const endpoint = value => value.dateTime ? new Date(value.dateTime) : time.midnight(new Date(value.date));
       return events.filter(event => event.start && event.end).map(event => {
         const allDay = Boolean(event.start.date);
         // HA's Mealie calendar can give an all-day dinner the same start and end date.
@@ -989,6 +1034,8 @@ function mount(root, host) {
     if (current !== request) return;
     calendarEvents = results.flatMap(result => result.status === 'fulfilled' ? result.value : [])
       .sort((a,b) => a.start-b.start);
+    for (const event of calendarEvents) confirmedEvents.delete(eventKey(event));
+    scheduleCalendarRefresh();
     calendarStatus.textContent = results.some(result => result.status === 'rejected') ? 'Some calendars could not load.' : '';
     redrawCalendar();
   }
@@ -1525,6 +1572,7 @@ function mount(root, host) {
   }
   return {loadCalendar, updateEntities, updateWidgets, startWeather, stop() {
     request++;
+    window.clearTimeout(retryTimer);
     stopWeather();
     stopBriefingSubscription();
     assistant.stop();
