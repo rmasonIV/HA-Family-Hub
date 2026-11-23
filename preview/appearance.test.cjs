@@ -52,3 +52,65 @@ test('the calendar stays usable inside the frame from phone to wall display', as
     });
   }
 });
+
+test('Quick Actions stay compact and keep thermostat targets usable on touch displays', async t => {
+  const browser = await chromium.launch({executablePath:process.env.CHROMIUM_PATH});
+  t.after(() => browser.close());
+  const page = await browser.newPage({hasTouch:true, viewport:{width:1366,height:768}});
+  await page.route(/^https?:/, route => route.abort());
+  await page.goto(pathToFileURL(join(__dirname, 'live.html')).href);
+  await page.locator('#month-grid .event').first().waitFor();
+  await page.locator('family-hub-live').evaluate(card => {
+    const id = 'climate.demo';
+    card.hass = {...card.hass, states:{...card.hass.states, [id]:{
+      state:'heat', attributes:{
+        friendly_name:'Thermostat', current_temperature:70, temperature:72,
+        min_temp:55, max_temp:85, supported_features:3, hvac_modes:['heat','heat_cool']
+      }
+    }}};
+    card.setConfig({...card.config, actions:['light.living_room', id], ribbon_default:'expanded'});
+  });
+  const ribbon = page.locator('#quick-actions');
+  const light = ribbon.locator('button.quick-control');
+  const climate = ribbon.locator('.quick-climate');
+  const heading = climate.locator('.quick-climate-heading');
+  const assertStepper = async row => {
+    const minus = await row.locator('button').first().boundingBox();
+    const plus = await row.locator('button').last().boundingBox();
+    const target = await row.locator('.quick-climate-value').boundingBox();
+    for (const button of [minus, plus]) {
+      assert.equal(button.width, 44);
+      assert.equal(button.height, 44);
+    }
+    assert.ok(Math.abs(minus.x + minus.width + 4 - target.x) < 1);
+    assert.ok(Math.abs(target.x + target.width + 4 - plus.x) < 1);
+  };
+  await assertStepper(climate.locator('.quick-climate-setpoint:visible'));
+  const wide = await ribbon.boundingBox();
+  const tile = await climate.boundingBox();
+  assert.ok(wide.height <= 130);
+  assert.equal(tile.y, (await light.boundingBox()).y);
+  assert.ok(tile.x + tile.width < wide.x + wide.width / 2);
+  assert.ok((await heading.boundingBox()).x < tile.x + tile.width / 2);
+  const activeDay = await page.locator('.month-day.is-current-week').first().boundingBox();
+  const otherDay = await page.locator('.month-day:not(.is-current-week)').first().boundingBox();
+  assert.ok(activeDay.height >= otherDay.height + 5);
+
+  await page.setViewportSize({width:320, height:568});
+  await page.locator('family-hub-live').evaluate(card => {
+    const id = 'climate.demo';
+    const entity = card.hass.states[id];
+    card.hass = {...card.hass, states:{...card.hass.states, [id]:{
+      state:'heat_cool', attributes:{...entity.attributes, target_temp_low:67, target_temp_high:75,
+        friendly_name:'Upstairs Hallway Thermostat'}
+    }}};
+  });
+  const narrow = await climate.boundingBox();
+  assert.ok(narrow.y >= (await light.boundingBox()).y + (await light.boundingBox()).height);
+  assert.ok(narrow.x + narrow.width <= 320);
+  const rows = await climate.locator('.quick-climate-setpoint:visible').all();
+  assert.equal(rows.length, 2);
+  for (const row of rows) await assertStepper(row);
+  await ribbon.locator('#quick-toggle').tap();
+  assert.equal(await climate.isVisible(), false);
+});

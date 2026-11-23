@@ -313,23 +313,27 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .quick-header{display:flex;align-items:center;gap:8px;padding:0 10px}
 .quick-header button{min-height:44px;border:0;background:transparent;color:inherit}
 #quick-toggle{flex:1;text-align:left;font-weight:600}
-.action-grid,.widget-grid{display:grid;gap:12px}
-.action-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.widget-grid{display:grid;gap:12px}
 .widget-grid{grid-template-columns:minmax(0,1fr)}
 .widget-grid[data-count="2"],.widget-grid[data-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}
 .widget-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
 .widget-slot{min-width:0}
 .widget-status{margin:0;padding:10px;border:1px solid var(--fh-border);border-radius:9px;overflow-wrap:anywhere}
-.action-grid{padding:12px;border-top:1px solid #dce2e9}
-.quick-control{display:flex;align-items:center;gap:10px;min-height:64px;padding:10px;border:1px solid #cbd5e1;border-radius:9px;background:#f4f7fb;text-align:left;color:inherit}
+.action-grid{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;padding:8px;border-top:1px solid #dce2e9}
+.quick-control{display:flex;align-items:center;gap:8px;min-width:0;max-width:min(100%,24rem);min-height:62px;padding:8px;border:1px solid #cbd5e1;border-radius:9px;background:#f4f7fb;text-align:left;color:inherit}
 .quick-control[aria-pressed="true"]{background:#fff1bf}
 .quick-control small,.device strong{display:block}
-.quick-climate{grid-column:span 2;display:grid;gap:6px;min-width:0}
-.quick-climate-heading{display:flex;align-items:center;gap:8px}
-.quick-climate-heading ha-icon{flex:none}
-.quick-climate-setpoint{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:4px;text-align:center}
+.quick-climate{flex-wrap:wrap;column-gap:12px}
+.quick-climate-heading{display:flex;align-items:center;gap:8px;min-height:44px;min-width:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.quick-climate-heading:hover strong{text-decoration:underline}
+.quick-climate-heading:disabled{cursor:default}
+.quick-climate-steppers{display:grid;gap:4px}
+.quick-climate-setpoint{display:grid;grid-template-columns:44px minmax(4rem,max-content) 44px;align-items:center;gap:4px;text-align:center}
+.quick-climate-value{font-variant-numeric:tabular-nums;font-weight:700}
+.quick-climate-value small{font-weight:400;line-height:1}
+.quick-climate [role="status"]{flex-basis:100%}
 .quick-climate [hidden]{display:none}
-.quick-climate-setpoint button{min-height:44px;border:1px solid var(--fh-border);border-radius:6px;background:var(--fh-surface);color:inherit;font:inherit;font-size:1.25rem;touch-action:manipulation}
+.quick-climate-setpoint button{width:44px;height:44px;padding:0;border:1px solid var(--fh-border);border-radius:6px;background:var(--fh-surface);color:inherit;font:inherit;font-size:1.25rem;touch-action:manipulation}
 .quick-climate-setpoint button:disabled{opacity:.5}
 .toolbar-top{display:flex;align-items:center;justify-content:flex-end;margin:14px 0 8px}
 .settings-button,.action-button{border:1px solid #cbd5e1;border-radius:9px;background:white;padding:10px 14px;min-height:44px}
@@ -383,8 +387,8 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .month-content.has-details{grid-template-columns:minmax(0,1fr) minmax(220px,32%)}
 .month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .weekday{text-align:center;font-size:.75rem}
-.month-day{display:grid;align-content:start;gap:3px;min-width:0;min-height:66px;text-align:left;border:1px solid #dce2e9;border-radius:7px;background:white;padding:5px;color:inherit}
-.month-content:not(.has-details) .month-day{min-height:clamp(64px,9dvh,112px)}
+.month-day{display:grid;align-content:start;gap:3px;min-width:0;min-height:calc(66px + var(--current-week-extra,0px));text-align:left;border:1px solid #dce2e9;border-radius:7px;background:white;padding:5px;color:inherit}
+.month-content:not(.has-details) .month-day{min-height:calc(clamp(64px,9dvh,112px) + var(--current-week-extra,0px))}
 .day-details{display:flex;flex-direction:column;min-height:0;contain:size}
 .day-details[hidden]{display:none}
 #day-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain}
@@ -412,6 +416,7 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .settings-list{list-style:none;padding:0}
 .settings-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
 
+.month-day.is-current-week{--current-week-extra:6px}
 .month-day .event{padding:3px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.72rem}
 .month-day-top{display:flex;justify-content:space-between;align-items:center;gap:1px;width:100%;min-width:0}
 .month-day-top .forecast-icon{inline-size:clamp(14px,4cqi,24px);block-size:clamp(14px,4cqi,24px);flex:none}
@@ -424,7 +429,7 @@ dialog::backdrop{background:#22304770}
   .month-content.has-details{grid-template-columns:minmax(0,1fr)}
   .day-details{contain:none;max-height:360px}
   .month-grid{gap:3px}
-  .month-day,.month-content:not(.has-details) .month-day{min-height:52px;padding:4px}
+  .month-day,.month-content:not(.has-details) .month-day{min-height:calc(52px + var(--current-week-extra,0px));padding:4px}
   .month-day .event{font-size:0;min-height:4px;padding:0}
   .month-day small{font-size:.65rem}
 }
@@ -477,7 +482,6 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
 .calendar-legend button[aria-pressed="true"]{border-color:var(--event-color);background:var(--fh-tint)}
 .calendar-legend button::before {content:'';flex:none;width:10px;height:10px;border-radius:50%;background:var(--event-color)}
 @container (max-width:720px) {.widget-grid[data-count="3"]{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@container (max-width:620px) {.action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container (max-width:480px) {.widget-grid[data-count]{grid-template-columns:minmax(0,1fr)}}
 .widget-grid.wide[data-count]{grid-template-columns:minmax(0,1fr)}
 /* The bezel uses the card width. The existing calendar adapts to the space inside it. */
@@ -833,23 +837,37 @@ function mountClimateAction(controls, host, id) {
     tile.setAttribute('data-custom-fill', '');
     tile.style.setProperty('--action-fill', appearance.off_color);
   }
-  const heading = document.createElement('div');
+  const heading = document.createElement('button');
   heading.className = 'quick-climate-heading';
+  heading.type = 'button';
+  heading.setAttribute('aria-haspopup', 'dialog');
+  heading.onclick = () => heading.dispatchEvent(new CustomEvent('hass-more-info', {
+    detail:{entityId:id}, bubbles:true, composed:true
+  }));
   const icon = document.createElement('ha-icon');
   icon.setAttribute('aria-hidden', 'true');
   icon.icon = isIcon(appearance.icon) ? appearance.icon : ACTION_ICONS.climate;
   const label = document.createElement('strong');
-  heading.append(icon, label);
+  const summary = document.createElement('span');
   const indoor = document.createElement('small');
+  summary.append(label, indoor);
+  heading.append(icon, summary);
+  const steppers = document.createElement('div');
+  steppers.className = 'quick-climate-steppers';
   const status = document.createElement('small');
   status.setAttribute('role', 'status');
   status.hidden = true;
-  tile.append(heading, indoor);
+  tile.append(heading, steppers);
   let pending = false;
   const rows = Object.entries(CLIMATE_SETPOINTS).map(([key, title]) => {
     const row = document.createElement('div');
     row.className = 'quick-climate-setpoint';
-    const value = document.createElement('span');
+    const value = document.createElement('strong');
+    const caption = document.createElement('small');
+    caption.textContent = title;
+    const reading = document.createElement('span');
+    reading.className = 'quick-climate-value';
+    reading.append(caption, value);
     const buttons = [-1, 1].map((direction, index) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -875,8 +893,8 @@ function mountClimateAction(controls, host, id) {
       };
       return {button, verb, direction};
     });
-    row.append(buttons[0].button, value, buttons[1].button);
-    tile.append(row);
+    row.append(buttons[0].button, reading, buttons[1].button);
+    steppers.append(row);
     return {key, title, row, value, buttons};
   });
   tile.append(status);
@@ -889,12 +907,14 @@ function mountClimateAction(controls, host, id) {
     const name = appearance.name || attributes.friendly_name || id;
     label.textContent = name;
     tile.setAttribute('aria-label', name);
+    heading.disabled = !entity;
     const unit = attributes.temperature_unit ?? hass.config?.unit_system?.temperature ?? '';
     const format = value => available && Number.isFinite(value) ? value + unit : '—';
-    indoor.textContent = available ? 'Indoor: ' + format(attributes.current_temperature) : 'Unavailable';
+    indoor.textContent = available ? 'Indoor ' + format(attributes.current_temperature) : 'Unavailable';
+    heading.setAttribute('aria-label', `Open ${name} details. ${indoor.textContent}`);
     for (const {key, title, row, value, buttons} of rows) {
       row.hidden = (key !== 'temperature') !== (entity?.state === 'heat_cool');
-      value.textContent = title + ': ' + format(attributes[key]);
+      value.textContent = format(attributes[key]);
       for (const {button, verb, direction} of buttons) {
         button.setAttribute('aria-label', verb + ' ' + name + ' ' + title.toLowerCase());
         button.disabled = row.hidden || pending || !climateAdjustment(entity, key, direction);
@@ -1617,6 +1637,8 @@ function mount(root, host) {
 
     const offset = weekOffset(month, firstDay);
     const dayCount = monthDate(month, 1, 0).getUTCDate();
+    const activeWeek = currentWeek();
+    const followingWeek = addDays(activeWeek, 7);
     document.getElementById('month-title').textContent = dateLabel(month, {month:'long', year:'numeric'});
     monthGrid.innerHTML = weekdays.map(day => `<div class="weekday">${day}</div>`).join('') +
       '<span aria-hidden="true"></span>'.repeat(offset) +
@@ -1625,7 +1647,8 @@ function mount(root, host) {
         const date = monthDate(month, 0, day);
         const events = eventsOn(date);
         const forecast = forecasts.get(dateKey(date));
-        return `<button type="button" class="month-day" data-day="${day}" aria-controls="day-details"
+        const inCurrentWeek = date >= activeWeek && date < followingWeek;
+        return `<button type="button" class="month-day${inCurrentWeek ? ' is-current-week' : ''}" data-day="${day}" aria-controls="day-details"
           aria-expanded="${day === selectedDay}"${+date === +today ? ' aria-current="date"' : ''}>
           <span class="month-day-top"><span class="month-date">${day}</span>${forecast ? weatherIcon(forecast) : ''}</span>
           ${eventCards(events.slice(0, 3), 'span')}
