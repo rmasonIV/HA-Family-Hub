@@ -38,9 +38,10 @@ async def run(folder):
         await hass.async_block_till_done()
         assert hass.states.get('calendar.family')
         calls = []
+        ai_text = '<b>A busy morning</b>'
         async def ai(call):
             calls.append(dict(call.data))
-            return {'data': '<b>A busy morning</b>', 'conversation_id': 'fake'}
+            return {'data': ai_text, 'conversation_id': 'fake'}
         hass.services.async_register('ai_task', 'generate_data', ai, supports_response=SupportsResponse.ONLY)
         async def generate(**data):
             result = await hass.services.async_call('script', 'family_hub_generate_briefing', data,
@@ -85,9 +86,17 @@ async def run(folder):
             'entity_id': 'calendar.family', 'summary': 'Future appointment',
             'start_date_time': f'{tomorrow} 09:00:00', 'end_date_time': f'{tomorrow} 10:00:00'},
             blocking=True)
+        await hass.services.async_call('calendar', 'create_event', {
+            'entity_id': 'calendar.family', 'summary': 'Holiday',
+            'start_date': tomorrow.isoformat(), 'end_date': (tomorrow + timedelta(days=1)).isoformat()},
+            blocking=True)
+        ai_text = 'No events today.'
+        assert (await generate(briefing_date=tomorrow.isoformat()))['status'] == 'ai_error'
+        ai_text = '<b>A busy morning</b>'
         future = await generate(briefing_date=tomorrow.isoformat())
         assert future['text'] == '<b>A busy morning</b>'
-        assert len(calls) == 2
+        assert len(calls) == 3
+        assert 'Holiday' in calls[-1]['instructions'] and 'Future appointment' in calls[-1]['instructions']
         assert hass.states.get(SENSOR).attributes['briefing'] == result
 
         weather_day = tomorrow + timedelta(days=1)
@@ -106,7 +115,7 @@ async def run(folder):
         instructions = calls[-1]['instructions']
         assert 'Events: []' in instructions and '"condition":"sunny"' in instructions, instructions
         assert '"temperature":72' in instructions and 'rainy' not in instructions
-        assert len(calls) == 3
+        assert len(calls) == 4
         assert hass.states.get(SENSOR).attributes['briefing'] == result
         hass.states.async_remove('weather.test_forecast')
 

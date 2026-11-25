@@ -482,7 +482,7 @@ test('integration settings enable briefings without card YAML or package entitie
   const requests = [];
   let briefingStatus;
   let unsubscribed = false;
-  const {card, find, hass} = setup(t, {calendars:['calendar.family'], default_view:'month_details'}, {
+  const {card, find, hass} = setup(t, {calendars:['calendar.family','calendar.school'], default_view:'month_details'}, {
     locale:{language:'en-US', time_format:'language'},
     connection:{async subscribeMessage(callback, request) {
       assert.equal(request.type, 'family_hub/briefing/subscribe');
@@ -499,7 +499,9 @@ test('integration settings enable briefings without card YAML or package entitie
   const section = find('#day-details .briefing');
   const button = section.querySelector('button');
   assert.equal(section.hidden, true);
-  briefingStatus({mode:'ready', revision:'first'});
+  briefingStatus({mode:'ready', revision:'first', calendars:['calendar.family']});
+  assert.match(section.querySelector('.briefing-scope').textContent, /Briefing calendars: Family/);
+  assert.match(section.querySelector('.briefing-scope').textContent, /outside the briefing scope/);
   assert.equal(section.hidden, false);
   assert.equal(button.disabled, false);
   button.click();

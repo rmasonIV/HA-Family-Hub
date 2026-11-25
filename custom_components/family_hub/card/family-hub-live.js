@@ -278,6 +278,7 @@ const daySummaryMarkup = `
       <strong>AI briefing</strong>
       <button type="button" class="action-button briefing-refresh"></button>
     </div>
+    <small class="briefing-scope" hidden></small>
     <p class="briefing-text" role="status"></p>
     <time class="briefing-time" hidden></time>
   </section>
@@ -1085,11 +1086,11 @@ function mount(root, host) {
   });
   legend.hidden = !legendItems.length;
 
-  function dayEvents(date) {
+  function dayEvents(date, calendar = selectedCalendar) {
     const start = time.midnight(date);
     const next = time.midnight(addDays(date, 1));
     const pending = [...confirmedEvents.values()].map(({event}) => event);
-    return [...calendarEvents, ...pending].filter(event => (!selectedCalendar || event.calendarId === selectedCalendar)
+    return [...calendarEvents, ...pending].filter(event => (!calendar || event.calendarId === calendar)
       && event.start < next && event.end > start).sort((a,b) => a.start-b.start);
   }
 
@@ -1549,8 +1550,25 @@ function mount(root, host) {
       : 'No briefing yet. Generate one for this date.';
     const error = briefingError?.day === day ? briefingError.message : failure && briefingFailure(failure);
     const status = setupStatus || (generating ? 'Generating briefing…' : error || (!text ? empty : ''));
+    let scope = '';
+    if (!setupStatus) {
+      const calendars = briefingState?.calendars;
+      if (managed && Array.isArray(calendars)) {
+        const names = calendars.map(id => hass.states[id]?.attributes.friendly_name || id);
+        scope = `Briefing calendars: ${names.join(', ')}. Configure in Family Hub → AI Briefing.`;
+        if (dayEvents(date, null).some(event => !calendars.includes(event.calendarId))) {
+          scope += ' Some events on this date are outside the briefing scope.';
+        }
+      } else {
+        scope = managed ? 'Briefing uses the Family Hub AI Briefing calendars.'
+          : 'Briefing uses the calendar IDs in the Home Assistant briefing package.';
+      }
+    }
     const filter = !setupStatus && selectedCalendar
       ? 'Briefing uses the configured calendars, independent of this filter.' : '';
+    const scopeLabel = section.querySelector('.briefing-scope');
+    scopeLabel.textContent = scope;
+    scopeLabel.hidden = !scope;
     const paragraph = section.querySelector('.briefing-text');
     const message = [text, status, filter].filter(Boolean).join('\n');
     if (paragraph.textContent !== message) paragraph.textContent = message;
