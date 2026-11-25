@@ -96,7 +96,6 @@ test('Quick Actions stay compact and keep thermostat targets usable on touch dis
   const otherDay = await page.locator('.month-day:not(.is-current-week)').first().boundingBox();
   assert.ok(activeDay.height >= otherDay.height + 5);
 
-  await page.setViewportSize({width:320, height:568});
   await page.locator('family-hub-live').evaluate(card => {
     const id = 'climate.demo';
     const entity = card.hass.states[id];
@@ -105,6 +104,11 @@ test('Quick Actions stay compact and keep thermostat targets usable on touch dis
         friendly_name:'Upstairs Hallway Thermostat'}
     }}};
   });
+  const [low, high] = await climate.locator('.quick-climate-setpoint:visible').all();
+  assert.equal((await low.boundingBox()).y, (await high.boundingBox()).y);
+  assert.ok((await ribbon.boundingBox()).height <= wide.height + 2);
+
+  await page.setViewportSize({width:320, height:568});
   const narrow = await climate.boundingBox();
   assert.ok(narrow.y >= (await light.boundingBox()).y + (await light.boundingBox()).height);
   assert.ok(narrow.x + narrow.width <= 320);
@@ -113,4 +117,19 @@ test('Quick Actions stay compact and keep thermostat targets usable on touch dis
   for (const row of rows) await assertStepper(row);
   await ribbon.locator('#quick-toggle').tap();
   assert.equal(await climate.isVisible(), false);
+  const previews = ribbon.locator('.quick-previews');
+  const [lightPreview, thermostatPreview] = await previews.getByRole('button').all();
+  const lightBox = await lightPreview.boundingBox();
+  const thermostatBox = await thermostatPreview.boundingBox();
+  assert.equal(lightBox.y, thermostatBox.y);
+  assert.ok(lightBox.height >= 44);
+  assert.ok(await previews.evaluate(element => element.scrollWidth > element.clientWidth));
+  assert.ok((await ribbon.boundingBox()).height < wide.height);
+  await thermostatPreview.tap();
+  assert.equal(await climate.isVisible(), true);
+  await ribbon.locator('#quick-toggle').press('Space');
+  await lightPreview.press('Enter');
+  assert.equal(await climate.isVisible(), true);
+  assert.equal(await ribbon.locator('#quick-toggle').evaluate(button =>
+    button.getRootNode().activeElement === button), true);
 });

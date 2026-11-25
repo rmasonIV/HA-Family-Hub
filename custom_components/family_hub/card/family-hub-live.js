@@ -313,7 +313,13 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .quick-actions{background:white;border:1px solid #dce2e9;border-radius:12px}
 .quick-header{display:flex;align-items:center;gap:8px;padding:0 10px}
 .quick-header button{min-height:44px;border:0;background:transparent;color:inherit}
-#quick-toggle{flex:1;text-align:left;font-weight:600}
+#quick-toggle{flex:none;text-align:left;font-weight:600}
+#quick-toggle[aria-expanded="true"],#quick-toggle:has(+ .quick-previews[hidden]){flex:1}
+.quick-previews{display:flex;gap:4px;min-width:0;overflow-x:auto}
+.quick-previews[hidden]{display:none}
+.quick-preview{display:flex;align-items:center;gap:6px;padding:0 8px;white-space:nowrap;font:inherit;cursor:pointer}
+.quick-preview ha-icon{flex:none;--mdc-icon-size:20px}
+.quick-header button:focus-visible{outline:2px solid currentColor;outline-offset:-2px}
 .widget-grid{display:grid;gap:12px}
 .widget-grid{grid-template-columns:minmax(0,1fr)}
 .widget-grid[data-count="2"],.widget-grid[data-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -324,11 +330,11 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .quick-control{display:flex;align-items:center;gap:8px;min-width:0;max-width:min(100%,24rem);min-height:62px;padding:8px;border:1px solid #cbd5e1;border-radius:9px;background:#f4f7fb;text-align:left;color:inherit}
 .quick-control[aria-pressed="true"]{background:#fff1bf}
 .quick-control small,.device strong{display:block}
-.quick-climate{flex-wrap:wrap;column-gap:12px}
-.quick-climate-heading{display:flex;align-items:center;gap:8px;min-height:44px;min-width:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.quick-climate{flex-wrap:wrap;column-gap:12px;max-width:100%}
+.quick-climate-heading{display:flex;max-width:100%;align-items:center;gap:8px;min-height:44px;min-width:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .quick-climate-heading:hover strong{text-decoration:underline}
 .quick-climate-heading:disabled{cursor:default}
-.quick-climate-steppers{display:grid;gap:4px}
+.quick-climate-steppers{display:flex;flex-wrap:wrap;gap:4px 8px;max-width:100%}
 .quick-climate-setpoint{display:grid;grid-template-columns:44px minmax(4rem,max-content) 44px;align-items:center;gap:4px;text-align:center}
 .quick-climate-value{font-variant-numeric:tabular-nums;font-weight:700}
 .quick-climate-value small{font-weight:400;line-height:1}
@@ -538,6 +544,7 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
 </style><main><p id="config-status" class="muted" role="status" hidden></p><section class="quick-actions" aria-label="Quick Actions" id="quick-actions">
   <div class="quick-header">
     <button type="button" id="quick-toggle" aria-controls="quick-controls" aria-expanded="true">Quick Actions</button>
+    <div class="quick-previews" id="quick-previews" hidden></div>
   </div>
   <div class="action-grid" id="quick-controls"></div></section>
 <div class="layout" id="layout">
@@ -1055,9 +1062,33 @@ function mount(root, host) {
   const calendarStatus = document.getElementById('calendar-status');
   const controls = document.getElementById('quick-controls');
   const toggle = document.getElementById('quick-toggle');
+  const previews = document.getElementById('quick-previews');
+  const previewLabels = host.config.actions.map(id => {
+    const appearance = host.config.action_appearance?.[id] ?? {};
+    const button = window.document.createElement('button');
+    button.className = 'quick-preview';
+    button.type = 'button';
+    button.setAttribute('aria-controls', controls.id);
+    button.setAttribute('aria-expanded', 'false');
+    const icon = window.document.createElement('ha-icon');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.icon = isIcon(appearance.icon) ? appearance.icon : ACTION_ICONS[domainOf(id)];
+    const label = window.document.createElement('span');
+    label.textContent = appearance.name || id;
+    button.setAttribute('aria-label', `Expand Quick Actions: ${label.textContent}`);
+    button.append(icon, label);
+    button.onclick = () => {
+      expanded = true;
+      updateRibbon();
+      toggle.focus();
+    };
+    previews.append(button);
+    return {id, appearance, button, label};
+  });
 
   function updateRibbon() {
     controls.hidden = !expanded;
+    previews.hidden = expanded || !previewLabels.length;
     toggle.textContent = expanded ? '▾ Quick Actions' : '▸ Quick Actions';
     toggle.setAttribute('aria-expanded', String(expanded));
   }
@@ -1313,6 +1344,11 @@ function mount(root, host) {
     }
     lastTemperature = current;
     lastUnit = unit;
+    for (const {id, appearance, button, label} of previewLabels) {
+      const name = appearance.name || hass.states[id]?.attributes.friendly_name || id;
+      label.textContent = name;
+      button.setAttribute('aria-label', `Expand Quick Actions: ${name}`);
+    }
     for (const {id,button,label,state,appearance,busy} of actionButtons) {
       const entity = hass.states[id];
       label.firstChild.textContent = entity?.attributes.friendly_name || id;
