@@ -1,0 +1,27 @@
+name: Family Hub Live tests
+on:
+  pull_request:
+    paths:
+      - 'custom_components/family_hub/card/family-hub-live.js'
+      - 'tests/family-hub-live*.test.cjs'
+      - '.github/workflows/live-card-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-card:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test-only browser DOM
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+      - name: JavaScript syntax check
+        run: node --check custom_components/family_hub/card/family-hub-live.js
+      - name: Run Live card regression suite
+        run: node --test tests/family-hub-live.test.cjs tests/family-hub-live-experience.test.cjs
