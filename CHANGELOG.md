@@ -3,12 +3,11 @@
 The live changelog, newest first. Entries older than v138 (1.103.0) live
 in [CHANGELOG_ARCHIVE.md](CHANGELOG_ARCHIVE.md).
 
-> **Note:** this file's entries currently run through v1.135.4. Everything
-> from v1.136.0 through the current release hasn't been written up here
-> yet — the version number in [manifest.json](custom_components/family_hub/manifest.json)
-> is ahead of this changelog.
-
 ## Changelog
+
+### v2026.11.4.1
+
+- Vision AI in Family Hub Live reads flyer photos and screenshots using a selectable Home Assistant Ollama AI Task. Edit the extracted event, fill in missing dates or times, then confirm it through Family Assistant. [Setup and example](live/README.md#add-an-event-from-an-image)
 
 ### v1.135.4
 

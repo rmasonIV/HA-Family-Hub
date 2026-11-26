@@ -804,3 +804,75 @@ test('the Quick Actions editor offers climate entities alongside switches', t =>
   picker.nextElementSibling.click();
   assert.deepEqual(Array.from(config.actions), [switchId, thermostatId]);
 });
+
+test('image-only Assistant keeps missing times blank and reviews edits before creating', async t => {
+  const requests = [];
+  const event = {
+    summary:'Edited workshop', start_date_time:'2026-12-05T14:00:00-06:00',
+    end_date_time:'2026-12-05T15:30:00-06:00',
+  };
+  const {find, window} = setup(t, {calendars:['calendar.family']}, {
+    async fetchWithAuth(path, {method, body}) {
+      requests.push({path, method, file:body.name});
+      return {
+        ok:true,
+        json:async () => ({
+          status:'draft', timezone:'America/Chicago', draft:{
+            title:'Workshop', start:'2026-12-05', end:'', all_day:false,
+            duration_minutes:0, confidence:'low', ambiguities:'<img src=x> Time is missing.',
+            location:'Library', description:'',
+          },
+        }),
+      };
+    },
+    async callWS(message) {
+      switch (message.type) {
+        case 'family_hub/assistant/status':
+          return {visible:true, vision_configured:true, calendars:{'calendar.family':'Family'}};
+        case 'family_hub/assistant/review_image_event':
+          requests.push(message);
+          return {status:'proposal', id:'image-proposal', calendar:'Family', timezone:'America/Chicago', event};
+        case 'family_hub/assistant/confirm':
+          requests.push(message);
+          return {status:'created', calendar_id:'calendar.family', event};
+        default:
+          throw new Error(message.type);
+      }
+    },
+  });
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  await tick();
+  find('#assistant-open').click();
+  assert.equal(find('#assistant-request-label').hidden, true);
+  const input = find('#assistant-image');
+  assert.equal(find('#assistant-image-label').hidden, false);
+  Object.defineProperty(input, 'files', {
+    value:[new window.File(['sample'], 'flyer.png', {type:'image/png'})],
+  });
+  input.dispatchEvent(new window.Event('change'));
+  find('#assistant-propose').click();
+  await tick();
+  assert.deepEqual(requests, [{path:'/api/family_hub/assistant/image', method:'POST', file:'flyer.png'}]);
+  assert.equal(find('#assistant-draft').hidden, false);
+  assert.equal(find('#assistant-confirm').hidden, true);
+  assert.equal(find('#assistant-start-date').value, '2026-12-05');
+  assert.equal(find('#assistant-start-time').value, '');
+  assert.equal(find('#assistant-draft-note').querySelector('img'), null);
+  assert.match(find('#assistant-draft-note').textContent, /Time is missing/);
+
+  find('#assistant-draft-title').value = 'Edited workshop';
+  find('#assistant-start-time').value = '14:00';
+  find('#assistant-duration').value = '90';
+  find('#assistant-propose').click();
+  await tick();
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].type, 'family_hub/assistant/review_image_event');
+  assert.equal(requests[1].event.start, '2026-12-05T14:00');
+  assert.equal(requests[1].event.duration_minutes, 90);
+  assert.match(find('#assistant-preview').textContent, /Edited workshop/);
+  find('#assistant-confirm').click();
+  await tick();
+  assert.equal(requests[2].type, 'family_hub/assistant/confirm');
+  assert.equal(requests[2].proposal_id, 'image-proposal');
+});

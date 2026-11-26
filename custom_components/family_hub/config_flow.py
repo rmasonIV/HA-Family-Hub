@@ -1,6 +1,7 @@
 """Config flow for Family Hub."""
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from datetime import time, timedelta
@@ -23,6 +24,7 @@ from . import (
     _restore_settings_history_snapshot,
     assistant,
     briefing,
+    vision,
     store as chores_store,
     updater,
 )
@@ -588,7 +590,7 @@ class FamilyHubOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_menu(
             step_id="init",
             menu_options=[
-                "settings", "ai_briefing", "family_assistant", "reminders", "test_notify", "upcoming", "restore_backup",
+                "settings", "ai_briefing", "vision_ai", "family_assistant", "reminders", "test_notify", "upcoming", "restore_backup",
             ],
         )
 
@@ -605,7 +607,11 @@ class FamilyHubOptionsFlow(config_entries.OptionsFlow):
             ai_task = user_input.get("ai_task")
             default = user_input.get("default_calendar")
             if user_input["enabled"]:
-                if not ai_task or not ai_task.startswith("ai_task.") or not self.hass.states.get(ai_task):
+                vision_enabled = self.config_entry.options.get(vision.OPTION, {}).get("enabled")
+                if ai_task:
+                    if not ai_task.startswith("ai_task.") or not self.hass.states.get(ai_task):
+                        errors["ai_task"] = "assistant_task_required"
+                elif not vision_enabled:
                     errors["ai_task"] = "assistant_task_required"
                 if not calendars or any(not assistant.writable(self.hass.states.get(entity)) for entity in calendars):
                     errors["calendars"] = "assistant_writable_required"
@@ -625,6 +631,39 @@ class FamilyHubOptionsFlow(config_entries.OptionsFlow):
         })
         return self.async_show_form(
             step_id="family_assistant",
+            data_schema=self.add_suggested_values_to_schema(schema, saved if user_input is None else user_input),
+            errors=errors,
+        )
+
+    async def async_step_vision_ai(self, user_input: dict[str, Any] | None = None):
+        """Select an existing Ollama AI Task for image extraction."""
+        saved = self.config_entry.options.get(vision.OPTION, {})
+        errors = {}
+        if user_input is not None:
+            task = vision.ollama_task(self.hass, user_input.get("ai_task"))
+            if user_input["enabled"]:
+                if task is None:
+                    errors["ai_task"] = "vision_task_required"
+                else:
+                    try:
+                        async with asyncio.timeout(15):
+                            await vision.check_model(*task)
+                    except vision.VisionError as error:
+                        errors["ai_task"] = str(error)
+                    except TimeoutError:
+                        errors["ai_task"] = "vision_provider_error"
+            if not errors:
+                return self.async_create_entry(title="", data={
+                    **self.config_entry.options, vision.OPTION: user_input,
+                })
+        schema = vol.Schema({
+            vol.Required("enabled", default=False): selector.BooleanSelector(),
+            vol.Optional("ai_task"): selector.EntitySelector(
+                selector.EntitySelectorConfig(filter={"domain": "ai_task", "integration": "ollama"})
+            ),
+        })
+        return self.async_show_form(
+            step_id="vision_ai",
             data_schema=self.add_suggested_values_to_schema(schema, saved if user_input is None else user_input),
             errors=errors,
         )

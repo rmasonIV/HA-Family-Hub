@@ -444,7 +444,7 @@ button{font:inherit;cursor:pointer}.device button{border:0;border-radius:8px;bac
 
 #assistant-dialog{width:min(36rem,calc(100% - 36px));box-sizing:border-box}
 #assistant-dialog label{display:grid;gap:5px;margin-block:12px}
-#assistant-dialog textarea,#assistant-dialog select{font:inherit;padding:8px;min-width:0}
+#assistant-dialog input,#assistant-dialog textarea,#assistant-dialog select{font:inherit;padding:8px;min-width:0}
 #assistant-dialog [hidden]{display:none!important}
 #assistant-preview{white-space:pre-wrap;overflow-wrap:anywhere;margin-block:12px}
 .assistant-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
@@ -558,6 +558,23 @@ ${decorated ? `<div class="calendar-surround" data-frame="${frame}" data-seasona
   <label id="assistant-request-label">Describe the event
     <textarea id="assistant-request" rows="3" maxlength="1000" placeholder="Soccer practice Thursday at 6 PM for 90 minutes"></textarea>
   </label>
+  <label id="assistant-image-label" hidden>Upload or take a photo (JPEG, PNG or WebP, up to 2 MB)
+    <input id="assistant-image" type="file" accept="image/jpeg,image/png,image/webp">
+  </label>
+  <fieldset id="assistant-draft" hidden>
+    <legend>Event details from the image</legend>
+    <p id="assistant-draft-note"></p>
+    <label>Title<input id="assistant-draft-title" maxlength="160"></label>
+    <label><span><input id="assistant-all-day" type="checkbox"> All day</span></label>
+    <label>Start date<input id="assistant-start-date" type="date"></label>
+    <label id="assistant-start-time-label">Start time<input id="assistant-start-time" type="time"></label>
+    <label>End date <span id="assistant-end-date-note" hidden>(first day after the event)</span><input id="assistant-end-date" type="date"></label>
+    <label id="assistant-end-time-label">End time<input id="assistant-end-time" type="time"></label>
+    <label id="assistant-duration-label">Duration in minutes (if no end time)<input id="assistant-duration" type="number" min="1" max="10080" step="1"></label>
+    <label>Location<input id="assistant-draft-location" maxlength="200"></label>
+    <label>Notes<textarea id="assistant-draft-description" maxlength="1000" rows="2"></textarea></label>
+    <button class="action-button" id="assistant-reset-image" type="button">Start over</button>
+  </fieldset>
   <label id="assistant-calendar-label">Calendar<select id="assistant-calendar"></select></label>
   <div id="assistant-preview" hidden></div>
   <p id="assistant-status" role="status" aria-live="polite"></p>
@@ -632,6 +649,10 @@ function mountAssistant(root, host, reloadCalendar) {
   const dialog = el('dialog');
   const request = el('request');
   const calendar = el('calendar');
+  const image = el('image');
+  const draftFields = el('draft');
+  const allDay = el('all-day');
+  let draft;
   const status = el('status');
   const preview = el('preview');
   const propose = el('propose');
@@ -645,6 +666,12 @@ function mountAssistant(root, host, reloadCalendar) {
 
   const call = (action, data = {}) => host.hass.callWS({type:'family_hub/assistant/' + action, ...data});
   const messages = {
+    invalid_image:'Choose a valid JPEG, PNG or WebP image up to 2 MB and 20 megapixels.',
+    vision_provider_error:'The selected Ollama AI Task could not read the image. Check the connection and model in Vision AI settings.',
+    vision_model_missing:'The selected model is missing from Ollama. Install it or choose another model in Vision AI settings.',
+    vision_unsupported_model:'Choose a locally installed model that supports vision in Vision AI settings.',
+    vision_invalid_output:'The vision model returned unusable event details. Try a clearer image or another model.',
+    clarify_image:'Enter a title and date. For a timed event, enter a start time and an end time or duration. Check for invalid or ambiguous times.',
     unavailable:'Assistant or this calendar is unavailable for your account.',
     provider_error:'The AI Task could not prepare an event. Check the provider settings and try again.',
     invalid_output:'The AI Task returned an invalid event. Try a shorter request with a specific date and time.',
@@ -673,10 +700,72 @@ function mountAssistant(root, host, reloadCalendar) {
   }
 
   function setPreview(active) {
+    const hasCalendars = Object.keys(availability?.calendars ?? {}).length > 0;
+    const textReady = hasCalendars && availability?.configured;
+    const visionReady = hasCalendars && availability?.vision_configured;
     preview.hidden = confirm.hidden = edit.hidden = !active;
-    el('request-label').hidden = el('calendar-label').hidden = propose.hidden = active;
+    edit.textContent = draft ? 'Edit details' : 'Edit request';
+    el('request-label').hidden = active || !textReady || Boolean(draft || image.files?.length);
+    el('image-label').hidden = active || !visionReady || Boolean(draft);
+    el('calendar-label').hidden = propose.hidden = active || !(textReady || visionReady);
+    draftFields.hidden = active || !draft;
+    propose.textContent = !draft && image.files?.length ? 'Read image' : 'Review event';
     if (!active) preview.textContent = '';
   }
+
+  function showTimeFields() {
+    for (const field of ['start-time', 'end-time', 'duration']) {
+      el(field + '-label').hidden = allDay.checked;
+    }
+    el('end-date-note').hidden = !allDay.checked;
+  }
+
+  function showDraft(result) {
+    draft = result.draft;
+    allDay.checked = draft.all_day;
+    for (const edge of ['start', 'end']) {
+      const [date, time = ''] = /^\d{2}:\d{2}$/.test(draft[edge])
+        ? ['', draft[edge]] : draft[edge].split('T');
+      el(edge + '-date').value = date;
+      el(edge + '-time').value = time;
+    }
+    for (const field of ['title', 'location', 'description']) el('draft-' + field).value = draft[field];
+    el('duration').value = draft.duration_minutes || '';
+    el('draft-note').textContent = [
+      `Time zone: ${result.timezone}. Model confidence: ${draft.confidence}.`,
+      draft.ambiguities,
+    ].filter(Boolean).join(' ');
+    showTimeFields();
+    setPreview(false);
+  }
+
+  function editedDraft() {
+    const endpoint = edge => {
+      const date = el(edge + '-date').value;
+      const time = el(edge + '-time').value;
+      if (allDay.checked) return date;
+      return date && time ? date + 'T' + time : date || time;
+    };
+    return {
+      title:el('draft-title').value, location:el('draft-location').value,
+      description:el('draft-description').value,
+      start:endpoint('start'), end:endpoint('end'), all_day:allDay.checked,
+      duration_minutes:allDay.checked ? 0 : Number(el('duration').value || 0),
+    };
+  }
+
+  image.addEventListener('change', () => {
+    setPreview(false);
+    status.textContent = '';
+  });
+  allDay.addEventListener('change', showTimeFields);
+  el('reset-image').addEventListener('click', () => {
+    draft = undefined;
+    image.value = '';
+    setPreview(false);
+    status.textContent = '';
+    image.focus();
+  });
 
   function discard() {
     if (!proposal) return;
@@ -687,8 +776,8 @@ function mountAssistant(root, host, reloadCalendar) {
   el('open').addEventListener('click', () => {
     session++;
     el('notice').hidden = true;
-    request.value = '';
-    setPreview(false);
+    request.value = image.value = '';
+    draft = undefined;
     const calendars = Object.entries(availability?.calendars ?? {});
     calendar.replaceChildren();
     for (const [id, label] of [['', 'Use default'], ...calendars]) {
@@ -697,28 +786,54 @@ function mountAssistant(root, host, reloadCalendar) {
       option.textContent = label;
       calendar.append(option);
     }
-    const ready = calendars.length > 0 && availability?.configured;
+    const ready = calendars.length > 0 && (availability?.configured || availability?.vision_configured);
     propose.disabled = !ready;
     confirm.disabled = false;
-    el('request-label').hidden = el('calendar-label').hidden = propose.hidden = !ready;
+    setPreview(false);
     status.textContent = ready ? '' : 'Set up Family Assistant in Home Assistant → Settings → Devices & services → Family Hub Light → Configure.';
     dialog.showModal();
-    if (ready) request.focus();
+    if (ready) (availability.configured ? request : image).focus();
   });
 
   propose.addEventListener('click', async () => {
-    if (!request.value.trim()) {
-      status.textContent = 'Describe the event first.';
-      request.focus();
+    const file = image.files?.[0];
+    if (!draft && !file && (!availability?.configured || !request.value.trim())) {
+      status.textContent = availability?.configured ? 'Describe the event or choose an image first.' : 'Choose an image first.';
+      (availability?.configured ? request : image).focus();
+      return;
+    }
+    if (!draft && file && file.size > 2 * 1024 * 1024) {
+      status.textContent = messages.invalid_image;
       return;
     }
     const current = session;
-    propose.disabled = request.disabled = calendar.disabled = true;
-    status.textContent = 'Preparing event…';
+    propose.disabled = request.disabled = calendar.disabled = image.disabled = draftFields.disabled = true;
+    status.textContent = file && !draft ? 'Reading image…' : 'Preparing event…';
     try {
-      const result = await call('propose', {text:request.value, calendar:calendar.value});
+      let result;
+      if (draft) {
+        const event = editedDraft();
+        if (!Number.isInteger(event.duration_minutes) || event.duration_minutes < 0 || event.duration_minutes > 10080) {
+          status.textContent = messages.clarify_image;
+          return;
+        }
+        result = await call('review_image_event', {event, calendar:calendar.value});
+      } else if (file) {
+        const response = await host.hass.fetchWithAuth('/api/family_hub/assistant/image', {
+          method:'POST', body:file,
+        });
+        if (!response.ok) throw new Error('Image upload failed');
+        result = await response.json();
+      } else {
+        result = await call('propose', {text:request.value, calendar:calendar.value});
+      }
       if (current !== session || !dialog.open) {
         if (result.status === 'proposal') call('cancel', {proposal_id:result.id}).catch(() => {});
+        return;
+      }
+      if (result.status === 'draft') {
+        showDraft(result);
+        status.textContent = 'Check the extracted details and fill in anything missing.';
         return;
       }
       if (result.status !== 'proposal') {
@@ -752,7 +867,10 @@ function mountAssistant(root, host, reloadCalendar) {
     } catch {
       if (current === session && dialog.open) status.textContent = messages.unavailable;
     } finally {
-      if (current === session) propose.disabled = request.disabled = calendar.disabled = false;
+      if (current === session) {
+        propose.disabled = request.disabled = calendar.disabled = image.disabled = draftFields.disabled = false;
+        if (draft && !draftFields.hidden) el('draft-title').focus();
+      }
     }
   });
 
@@ -760,7 +878,7 @@ function mountAssistant(root, host, reloadCalendar) {
     discard();
     setPreview(false);
     status.textContent = '';
-    request.focus();
+    (draft ? el('draft-title') : request).focus();
   });
 
   confirm.addEventListener('click', async () => {
@@ -795,8 +913,9 @@ function mountAssistant(root, host, reloadCalendar) {
   dialog.addEventListener('close', () => {
     session++;
     discard();
-    request.value = '';
-    request.disabled = calendar.disabled = confirm.disabled = false;
+    request.value = image.value = '';
+    draft = undefined;
+    request.disabled = calendar.disabled = confirm.disabled = image.disabled = draftFields.disabled = false;
     el('open').focus();
   });
   return {refresh, stop() {

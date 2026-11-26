@@ -10,15 +10,18 @@ from time import monotonic
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from aiohttp import web
 from homeassistant.auth.permissions.const import POLICY_CONTROL, POLICY_READ
 from homeassistant.components import websocket_api
 from homeassistant.components.calendar import CalendarEntityFeature
 from homeassistant.components.calendar.const import DATA_COMPONENT
+from homeassistant.components.http import HomeAssistantView, KEY_HASS, KEY_HASS_USER
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
+from . import vision
 from .const import DOMAIN, PERMISSION_EDIT_EVENT
-from .chores_websocket_api import _has_permission
+from .chores_websocket_api import _has_permission_ctx
 
 OPTION = "family_assistant"
 VERSION = 1
@@ -138,36 +141,68 @@ def normalize(data, calendars: list[str], selected: str, default: str, zone: Zon
     return entity_id, fields, default_duration
 
 
-def _access(hass, connection):
+def _access(hass, user):
     """Resolve fresh integration options and caller-authorized targets."""
     entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries or connection.user is None:
+    if not entries or user is None:
         return {}, {}, {}
     entry = entries[0]
     runtime = hass.data.get(DOMAIN, {}).get("entries", {}).get(entry.entry_id)
     options = entry.options.get(OPTION, {})
     if runtime is None or not options.get("enabled"):
         return {}, {}, {}
-    if not _has_permission(runtime, connection, PERMISSION_EDIT_EVENT):
+    if not _has_permission_ctx(runtime, user.id, user.is_admin, PERMISSION_EDIT_EVENT):
         return options, runtime, {}
     calendars = {}
     for entity_id in options.get("calendars", []):
         state = hass.states.get(entity_id)
         if (writable(state) and state.state not in ("unknown", "unavailable")
-                and connection.user.permissions.check_entity(entity_id, POLICY_CONTROL)
-                and connection.user.permissions.check_entity(entity_id, POLICY_READ)):
+                and user.permissions.check_entity(entity_id, POLICY_CONTROL)
+                and user.permissions.check_entity(entity_id, POLICY_READ)):
             calendars[entity_id] = state.name
     return options, runtime, calendars
+
+
+def _vision_task_id(hass):
+    entries = hass.config_entries.async_entries(DOMAIN)
+    settings = entries[0].options.get(vision.OPTION, {}) if entries else {}
+    return settings.get("ai_task") if settings.get("enabled") else None
+
+
+def _proposal_slot(runtime, actor):
+    """Apply the same write and inference limits to both entry points."""
+    pending = runtime.setdefault("assistant_pending", {})
+    now = monotonic()
+    for user_id, proposal in tuple(pending.items()):
+        if proposal.status != "saving" and proposal.expires <= now:
+            pending.pop(user_id)
+    busy = runtime.setdefault("assistant_busy", set())
+    previous = pending.get(actor)
+    if (actor in busy or len(busy) >= 2
+            or previous and previous.status in ("saving", "uncertain")):
+        raise ProposalError("busy")
+    return pending, busy
+
+
+def _store_proposal(pending, actor, entity_id, fields, calendar, zone, default_duration=False):
+    proposal = Pending(uuid4().hex, monotonic() + TTL, entity_id, fields)
+    pending[actor] = proposal
+    return {
+        "status": "proposal", "id": proposal.token, "version": VERSION,
+        "calendar": calendar, "event": fields, "timezone": zone.key,
+        "default_minutes": DEFAULT_MINUTES if default_duration else None,
+    }
 
 
 @websocket_api.websocket_command({vol.Required("type"): "family_hub/assistant/status"})
 @websocket_api.async_response
 async def ws_status(hass, connection, msg):
-    options, _, calendars = _access(hass, connection)
+    options, _, calendars = _access(hass, connection.user)
     connection.send_result(msg["id"], {
         "visible": bool(calendars or connection.user and connection.user.is_admin),
         "calendars": calendars,
         "configured": bool(options.get("ai_task")),
+        "vision_configured": bool(calendars and _vision_task_id(hass)),
     })
 
 
@@ -178,7 +213,7 @@ async def ws_status(hass, connection, msg):
 })
 @websocket_api.async_response
 async def ws_propose(hass, connection, msg):
-    options, runtime, calendars = _access(hass, connection)
+    options, runtime, calendars = _access(hass, connection.user)
     selected = msg["calendar"]
     if not calendars or (selected and selected not in calendars):
         connection.send_result(msg["id"], {"status": "unavailable"})
@@ -188,16 +223,10 @@ async def ws_propose(hass, connection, msg):
         return
 
     actor = connection.user.id
-    pending = runtime.setdefault("assistant_pending", {})
-    now = monotonic()
-    for user_id, proposal in tuple(pending.items()):
-        if proposal.status != "saving" and proposal.expires <= now:
-            pending.pop(user_id)
-    busy = runtime.setdefault("assistant_busy", set())
-    previous = pending.get(actor)
-    if (actor in busy or len(busy) >= 2
-            or previous and previous.status in ("saving", "uncertain")):
-        connection.send_result(msg["id"], {"status": "busy"})
+    try:
+        pending, busy = _proposal_slot(runtime, actor)
+    except ProposalError as error:
+        connection.send_result(msg["id"], {"status": str(error)})
         return
     pending.pop(actor, None)
 
@@ -236,17 +265,121 @@ async def ws_propose(hass, connection, msg):
     except ProposalError as error:
         connection.send_result(msg["id"], {"status": str(error)})
         return
-    current, current_runtime, current_calendars = _access(hass, connection)
+    current, current_runtime, current_calendars = _access(hass, connection.user)
     if current_runtime is not runtime or current != options or entity_id not in current_calendars:
         connection.send_result(msg["id"], {"status": "unavailable"})
         return
-    proposal = Pending(uuid4().hex, monotonic() + TTL, entity_id, fields)
-    pending[actor] = proposal
-    connection.send_result(msg["id"], {
-        "status": "proposal", "id": proposal.token, "version": VERSION,
-        "calendar": calendars[entity_id], "event": fields, "timezone": zone.key,
-        "default_minutes": DEFAULT_MINUTES if default_duration else None,
-    })
+    connection.send_result(msg["id"], _store_proposal(
+        pending, actor, entity_id, fields, calendars[entity_id], zone, default_duration,
+    ))
+
+
+class AssistantImageView(HomeAssistantView):
+    """Keep image uploads out of Home Assistant's websocket payload logs."""
+
+    url = "/api/family_hub/assistant/image"
+    name = "api:family_hub:assistant:image"
+    requires_auth = True
+
+    async def post(self, request):
+        result = await self._extract(request)
+        return web.json_response(result, headers={"Cache-Control": "no-store"})
+
+    async def _extract(self, request):
+        hass, user = request[KEY_HASS], request[KEY_HASS_USER]
+        options, runtime, calendars = _access(hass, user)
+        task_id = _vision_task_id(hass) if calendars else None
+        if not task_id:
+            return {"status": "unavailable"}
+        task = vision.ollama_task(hass, task_id)
+        if not task:
+            return {"status": "vision_provider_error"}
+        if request.content_length and request.content_length > vision.MAX_IMAGE_BYTES:
+            return {"status": "invalid_image"}
+        actor = user.id
+        timezone = hass.config.time_zone
+        def still_allowed():
+            current, current_runtime, current_calendars = _access(hass, user)
+            return (current == options and current_runtime is runtime and bool(current_calendars)
+                    and timezone == hass.config.time_zone and task_id == _vision_task_id(hass)
+                    and task == vision.ollama_task(hass, task_id))
+
+        try:
+            _, busy = _proposal_slot(runtime, actor)
+            busy.add(actor)
+            try:
+                raw = bytearray()
+                async with asyncio.timeout(10):
+                    async for chunk in request.content.iter_chunked(64 * 1024):
+                        raw.extend(chunk)
+                        if len(raw) > vision.MAX_IMAGE_BYTES:
+                            return {"status": "invalid_image"}
+                async with asyncio.timeout(90):
+                    image = await hass.async_add_executor_job(vision.clean_image, raw)
+                    if not still_allowed():
+                        return {"status": "unavailable"}
+                    draft = await vision.extract(*task, image, timezone)
+            finally:
+                busy.discard(actor)
+        except (ProposalError, vision.VisionError) as error:
+            return {"status": str(error)}
+        except ConnectionError:
+            return {"status": "invalid_image"}
+        except TimeoutError:
+            return {"status": "vision_provider_error"}
+        if not still_allowed():
+            return {"status": "unavailable"}
+        return {"status": "draft", "draft": draft, "timezone": timezone}
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "family_hub/assistant/review_image_event",
+    vol.Required("event"): {
+        **{vol.Required(key): vol.All(str, vol.Length(max=vision.TEXT_LIMITS[key]))
+           for key in ("title", "start", "end", "location", "description")},
+        vol.Required("all_day"): bool,
+        vol.Required("duration_minutes"): vol.All(int, vol.Range(min=0, max=10080)),
+    },
+    vol.Optional("calendar", default=""): str,
+})
+@websocket_api.async_response
+async def ws_review_image_event(hass, connection, msg):
+    options, runtime, calendars = _access(hass, connection.user)
+    selected = msg["calendar"]
+    if not calendars or not _vision_task_id(hass) or (selected and selected not in calendars):
+        connection.send_result(msg["id"], {"status": "unavailable"})
+        return
+    actor = connection.user.id
+    zone = ZoneInfo(hass.config.time_zone)
+    values = msg["event"].copy()
+    duration = values.pop("duration_minutes")
+    all_day = values.pop("all_day")
+    start, end = values["start"], values["end"]
+    try:
+        pending, _ = _proposal_slot(runtime, actor)
+        pattern = vision.DATE if all_day else vision.LOCAL_TIME
+        if (not values["title"].strip() or not re.fullmatch(pattern, start)
+                or end and not re.fullmatch(pattern, end)
+                or duration and (all_day or end)
+                or not all_day and not (end or duration)):
+            raise ProposalError("clarify_image")
+        if duration:
+            finish = _local_time(start, zone) + timedelta(minutes=duration)
+            values["end"] = finish.astimezone(zone).strftime("%Y-%m-%dT%H:%M")
+        entity_id, fields, _ = normalize(
+            {**values, "status": "event", "calendar": ""}, list(calendars), selected,
+            options.get("default_calendar", ""), zone,
+        )
+    except ProposalError as error:
+        code = "clarify_image" if str(error) == "clarify" else str(error)
+        connection.send_result(msg["id"], {"status": code})
+        return
+    except (ValueError, OverflowError):
+        connection.send_result(msg["id"], {"status": "clarify_image"})
+        return
+    connection.send_result(msg["id"], _store_proposal(
+        pending, actor, entity_id, fields, calendars[entity_id], zone,
+    ))
 
 
 async def _refresh_calendar(hass, proposal):
@@ -284,7 +417,7 @@ async def _refresh_calendar(hass, proposal):
 })
 @websocket_api.async_response
 async def ws_confirm(hass, connection, msg):
-    _, runtime, calendars = _access(hass, connection)
+    _, runtime, calendars = _access(hass, connection.user)
     actor = connection.user
     proposal = runtime.get("assistant_pending", {}).get(actor.id) if actor else None
     if not proposal or proposal.token != msg["proposal_id"]:
@@ -340,7 +473,7 @@ async def ws_confirm(hass, connection, msg):
 })
 @websocket_api.async_response
 async def ws_cancel(hass, connection, msg):
-    _, runtime, _ = _access(hass, connection)
+    _, runtime, _ = _access(hass, connection.user)
     pending = runtime.get("assistant_pending", {})
     actor = connection.user
     proposal = pending.get(actor.id) if actor else None
@@ -350,5 +483,6 @@ async def ws_cancel(hass, connection, msg):
 
 
 def register(hass):
-    for command in (ws_status, ws_propose, ws_confirm, ws_cancel):
+    hass.http.register_view(AssistantImageView())
+    for command in (ws_status, ws_propose, ws_review_image_event, ws_confirm, ws_cancel):
         websocket_api.async_register_command(hass, command)

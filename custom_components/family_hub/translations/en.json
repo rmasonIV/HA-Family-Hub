@@ -81,9 +81,17 @@
         "description": "Allow signed-in users with calendar edit permission to propose and confirm new events.",
         "data": {
           "enabled": "Enable Family Assistant",
-          "ai_task": "AI Task",
+          "ai_task": "Text AI Task (optional when Vision AI is enabled)",
           "calendars": "Calendars Assistant can write to",
           "default_calendar": "Default calendar (optional)"
+        }
+      },
+      "vision_ai": {
+        "title": "Vision AI",
+        "description": "Choose an Ollama AI Task for a locally installed vision model. Images selected in Add Event Assistant are sent to that Ollama server.",
+        "data": {
+          "enabled": "Enable image uploads in Family Assistant",
+          "ai_task": "Ollama Vision AI Task"
         }
       },
       "ai_briefing": {
@@ -106,6 +114,7 @@
           "settings": "Family Hub Settings",
           "ai_briefing": "AI Briefing",
           "family_assistant": "Family Assistant",
+          "vision_ai": "Vision AI",
           "reminders": "Calendar reminders",
           "grocy": "Grocy",
           "test_notify": "Test a notification",
@@ -203,6 +212,10 @@
     },
     "error": {
       "briefing_calendars_required": "Select at least one calendar to enable AI Briefing.",
+      "vision_task_required": "Choose an available Ollama AI Task configured for a locally installed vision model.",
+      "vision_model_missing": "The model is missing from Ollama. Install it or choose another AI Task.",
+      "vision_unsupported_model": "Choose a locally installed Ollama model that supports vision.",
+      "vision_provider_error": "Home Assistant could not verify the model. Check your Ollama connection and try again.",
       "assistant_task_required": "Choose a Home Assistant AI Task entity.",
       "assistant_writable_required": "Choose calendars that support creating events.",
       "assistant_default_not_allowed": "Choose a default from the calendars Assistant can write to.",

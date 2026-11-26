@@ -27,6 +27,8 @@ Configure calendar and action entities in the visual editor. Use the code editor
 
 Enable [AI Daily Briefing](live/README.md#ai-daily-briefing) to summarize an allowlist of calendars with a local or cloud Home Assistant AI Task.
 
+Use [Vision AI](live/README.md#add-an-event-from-an-image) to turn a flyer photo or screenshot into an editable calendar draft with a locally installed Ollama model.
+
 ### Optional calendar appearance
 
 In the Family Hub Live visual editor, use **Calendar appearance**, or add this to the existing card YAML.

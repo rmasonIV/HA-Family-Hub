@@ -51,7 +51,18 @@ The Assistant uses Home Assistant's time zone and shows a 60-minute default when
 
 Assistant requires a signed-in Home Assistant account, Family Hub's **Edit events** permission, and access to control the target calendar. Users sharing the kiosk share its account identity. A write from the Pi appears under its account, such as **Onlooker**, in Home Assistant Activity when Logbook and Recorder are enabled and include the calendar. Family Hub's info logs record the account ID for requests and write outcomes without event text. For a gathering, leave **Edit events** off for Onlooker or switch off **Enable Family Assistant**. Those controls govern Assistant access. Review the kiosk account's Home Assistant permissions separately for native calendar access.
 
-This release creates one event at a time. If a save cannot be verified, check the target calendar before trying again. Follow-up ideas include a guest-mode calendar lock enforced on the server, direct editing in the review modal with a touch-friendly 15-minute duration picker, event updates with an exact before-and-after preview, and deletion of a single identified event with an extra confirmation. Invitations require separate provider support. Future voice input can fill the same modal and use the same on-screen confirmation.
+This release creates one event at a time. If a save cannot be verified, check the target calendar before trying again. Follow-up ideas include a guest-mode calendar lock enforced on the server, a touch-friendly duration picker, event updates with an exact before-and-after preview, and deletion of a single identified event with an extra confirmation. Invitations require separate provider support. Future voice input can fill the same modal and use the same on-screen confirmation.
+
+### Add an event from an image
+
+1. In Home Assistant's **Ollama** integration, add an **AI Task** for a locally installed vision model. For the initial setup, choose `qwen3-vl:4b-instruct` on your self-hosted Ollama server and give the task a recognizable name such as **Flyer Reader**. [Ollama model details](https://ollama.com/library/qwen3-vl:4b-instruct)
+2. In **Settings → Devices & services → Family Hub Light → Configure → Vision AI**, enable uploads and choose **Flyer Reader**. To switch models, select another Ollama AI Task here or change the model in the existing task's Ollama settings.
+3. In **Configure → Family Assistant**, enable Assistant and select which calendars it can write to. The text AI Task is optional for image-only setups.
+4. In **Add event with Assistant**, choose a photo or screenshot and select **Read image**. Edit the title, date, time, location and notes as needed. Check the displayed ambiguities, then select **Review event** and **Create event** to confirm.
+
+For a first test, use a fictional flyer that says “Library workshop · December 5, 2026 · 2:00–3:30 PM · Main Library.” Try removing the time to check that the draft asks you to fill it in. Timed image drafts require an explicit start and either an end or a duration. Mark an event as all day only if that's intended. Dates and times use Home Assistant's time zone, which is shown in the draft. Model confidence is a self-assessment, so compare the draft with the original before saving.
+
+Vision AI accepts one JPEG, PNG or WebP image up to 2 MB and 20 megapixels. Family Hub strips metadata and sends the image and Home Assistant time zone to the configured Ollama server. Keep that server self-hosted and disable its cloud features if you use it for private photos. Family Hub keeps the upload in memory for inference. Calendar labels, existing events and credentials stay out of the vision request, and the image is not attached to the saved calendar event.
 
 ## Calendar appearance
 

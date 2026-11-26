@@ -1,6 +1,8 @@
 """Check the Assistant handlers against HA Core with a synthetic AI and calendar."""
 
 import asyncio
+from io import BytesIO
+import json
 from datetime import datetime
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -10,9 +12,12 @@ from zoneinfo import ZoneInfo
 
 from homeassistant.components.calendar.const import DATA_COMPONENT
 from homeassistant.components.calendar.services import CREATE_EVENT_SCHEMA
+from homeassistant.components.http import KEY_HASS, KEY_HASS_USER
 from homeassistant.core import Context, HomeAssistant
 
-from custom_components.family_hub import assistant
+from PIL import Image
+
+from custom_components.family_hub import assistant, vision
 from custom_components.family_hub.const import DOMAIN, PERMISSION_EDIT_EVENT
 
 
@@ -61,6 +66,100 @@ class AssistantTests(IsolatedAsyncioTestCase):
             self.hass, self.connection, {"id": 1, "text": "Soccer tomorrow at 6 PM", "calendar": ""},
         )
         return self.connection.result
+
+    async def test_image_draft_requires_edits_and_explicit_confirmation(self):
+        extracted = {
+            "status": "draft", "title": "Library workshop", "start": "2026-12-05",
+            "end": "", "location": "Main library", "description": "Bring a notebook",
+            "all_day": False, "duration_minutes": 0, "confidence": "low",
+            "ambiguities": "The image does not give a time.",
+        }
+        provider = SimpleNamespace(
+            show=AsyncMock(return_value=SimpleNamespace(
+                capabilities=["vision"], modelinfo={"general.architecture": "example"},
+            )),
+            chat=AsyncMock(return_value=SimpleNamespace(
+                message=SimpleNamespace(content=json.dumps({
+                    **{key: value for key, value in extracted.items() if key not in ("start", "end")},
+                    "start_date": "2026-12-05", "start_time": "", "end_date": "", "end_time": "",
+                })),
+            )),
+        )
+        source = BytesIO()
+        Image.new("RGB", (40, 40), "white").save(source, "PNG")
+
+        async def chunks(_):
+            yield source.getvalue()
+
+        class Upload(dict):
+            content_length = len(source.getvalue())
+            content = SimpleNamespace(iter_chunked=chunks)
+
+        upload = Upload({KEY_HASS: self.hass, KEY_HASS_USER: self.connection.user})
+        view = assistant.AssistantImageView()
+        self.options.pop("ai_task")
+        with (
+            patch.object(assistant, "_vision_task_id", return_value="ai_task.vision"),
+            patch.object(vision, "ollama_task", return_value=(provider, "vision:test")),
+        ):
+            response = await view.post(upload)
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+            self.assertEqual(json.loads(response.body)["draft"], extracted)
+            provider.show.assert_awaited_once_with("vision:test")
+            payload = provider.chat.await_args.kwargs
+            self.assertEqual(payload["model"], "vision:test")
+            self.assertTrue(payload["messages"][0]["images"][0].startswith(b"\xff\xd8"))
+            self.assertNotIn("calendar.family", payload["messages"][0]["content"])
+            self.assertNotIn("tools", payload)
+            self.assertFalse(self.runtime.get("assistant_pending"))
+            self.service.assert_not_awaited()
+
+            event = {key: value for key, value in extracted.items()
+                     if key not in ("status", "confidence", "ambiguities")}
+            message = {"id": 2, "event": event, "calendar": ""}
+            await assistant.ws_review_image_event.__wrapped__(self.hass, self.connection, message)
+            self.assertEqual(self.connection.result["status"], "clarify_image")
+            event["start"] += "T14:00"
+            await assistant.ws_review_image_event.__wrapped__(self.hass, self.connection, message)
+            self.assertEqual(self.connection.result["status"], "clarify_image")
+            event.update(duration_minutes=90, title="Edited workshop")
+            await assistant.ws_review_image_event.__wrapped__(self.hass, self.connection, message)
+            proposal = self.connection.result
+            self.assertEqual(proposal["status"], "proposal")
+            self.assertEqual(proposal["event"]["summary"], "Edited workshop")
+            self.assertEqual(proposal["event"]["end_date_time"], "2026-12-05T15:30:00-06:00")
+            self.service.assert_not_awaited()
+
+            await assistant.ws_confirm.__wrapped__(
+                self.hass, self.connection, {"id": 3, "proposal_id": proposal["id"]},
+            )
+            self.assertEqual(self.connection.result["status"], "created")
+            self.service.assert_awaited_once()
+            self.assertEqual(self.service.await_args.args[:2], ("calendar", "create_event"))
+            CREATE_EVENT_SCHEMA(self.service.await_args.args[2])
+
+            self.connection.allowed = False
+            self.assertEqual(json.loads((await view.post(upload)).body)["status"], "unavailable")
+            provider.chat.assert_awaited_once()
+
+    async def test_vision_rejects_text_only_and_malformed_output(self):
+        provider = SimpleNamespace(
+            show=AsyncMock(return_value=SimpleNamespace(capabilities=["completion"])),
+            chat=AsyncMock(),
+        )
+        with self.assertRaisesRegex(vision.VisionError, "^vision_unsupported_model$"):
+            await vision.extract(provider, "text:test", b"image", "UTC")
+        provider.chat.assert_not_awaited()
+        provider.show.return_value = SimpleNamespace(capabilities=["vision"], modelinfo={})
+        with self.assertRaisesRegex(vision.VisionError, "^vision_unsupported_model$"):
+            await vision.extract(provider, "remote-alias:test", b"image", "UTC")
+        provider.chat.assert_not_awaited()
+        provider.show.return_value.modelinfo = {"general.architecture": "example"}
+        provider.chat.return_value = SimpleNamespace(message=SimpleNamespace(content="not JSON"))
+        with self.assertRaisesRegex(vision.VisionError, "^vision_invalid_output$"):
+            await vision.extract(provider, "vision:test", b"image", "UTC")
+        with self.assertRaisesRegex(vision.VisionError, "^invalid_image$"):
+            vision.clean_image(b"not an image")
 
     async def test_preview_and_single_calendar_write_with_signed_in_actor(self):
         preview = await self.propose()
