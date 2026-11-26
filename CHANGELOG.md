@@ -1,3 +1,12 @@
+### 2026.11.1.4 — Calendar Experience & Smart Widgets
+
+- Filled, rounded, high-contrast calendar legend labels; existing single-calendar filtering retained with inactive-label feedback.
+- Past events dimmed in week/month/detail rendering while preserving readable event text.
+- Three optional Quick Widgets within the existing four-slot limit: What's next, selectable event Countdown, and Tonight's Dinner (reuses the Mealie event/recipe resolver).
+- No new backend endpoints, third-party calls, credentials, or background polling. Calendar-derived widgets are limited to visible-range cached events; countdown selection is session-local.
+- Security: calendar and recipe text rendered using textContent/escaping, validated card widget types and calendar IDs, existing guarded Mealie links retained.
+- Added regression tests for legend filtering/contrast, past event presentation, countdown and meal-preview handling.
+
 # Family Hub — Changelog
 
 The live changelog, newest first. Entries older than v138 (1.103.0) live
