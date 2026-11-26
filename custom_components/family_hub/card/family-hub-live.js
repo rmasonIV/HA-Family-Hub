@@ -993,6 +993,7 @@ function mount(root, host) {
   function redrawCalendar(refreshEvents = true) {
     const active = root.activeElement?.dataset;
     renderCalendar(refreshEvents);
+    updateHouseholdWidgets();
     if (active?.forecast !== undefined) weekDays.querySelector(`[data-forecast="${active.forecast}"]`)?.focus();
     if (active?.weekDay !== undefined) weekDays.querySelector(`[data-week-day="${active.weekDay}"]`)?.focus();
     if (active?.day !== undefined) monthGrid.querySelector(`[data-day="${active.day}"]`)?.focus({preventScroll:true});
@@ -1288,6 +1289,7 @@ function mount(root, host) {
       .sort((a,b) => a.start-b.start);
   }
 
+  const countdownSelections = new Map();
   function renderHouseholdWidget(entry, slot) {
     let article = slot.querySelector('.household-widget');
     if (!article) {
@@ -1317,10 +1319,24 @@ function mount(root, host) {
       return;
     }
     if (kind === 'countdown') {
-      const target = future.find(event =>
+      const candidates = future.filter(event =>
         (!entry.config.calendar || entry.config.calendar === event.calendarId) &&
         (!entry.config.event || event.summary.toLowerCase().includes(entry.config.event.toLowerCase())));
-      if (!target) {line('small','No matching upcoming event in the loaded calendar range.');return;}
+      if (!candidates.length) {line('small','No matching upcoming event in the loaded calendar range.');return;}
+      const identity = event => JSON.stringify([event.calendarId,event.summary,event.start.toISOString()]);
+      const chosen = countdownSelections.get(slot);
+      const target = candidates.find(event => identity(event) === chosen) ?? candidates[0];
+      const picker = window.document.createElement('select');
+      picker.setAttribute('aria-label','Select countdown event');
+      candidates.slice(0,100).forEach(event => {
+        const choice = window.document.createElement('option');
+        choice.value = identity(event);
+        choice.textContent = event.summary + ' — ' + dateLabel(time.dayAt(event.start),{month:'short',day:'numeric'});
+        picker.append(choice);
+      });
+      picker.value = identity(target);
+      picker.onchange = () => {countdownSelections.set(slot,picker.value);renderHouseholdWidget(entry,slot);};
+      article.append(picker);
       line('strong',target.summary);
       const days = Math.max(0,Math.ceil((target.start.getTime()-now)/86400000));
       line('p',target.start.getTime() <= now ? 'Happening now' : days+' day'+(days === 1?'':'s')+' away');
@@ -1336,12 +1352,8 @@ function mount(root, host) {
     const recipe = window.document.createElement('div');
     recipe.className = 'meal-recipe';
     // Reuse the existing guarded Mealie recipe resolver and five-minute cache.
-    const wrapper = window.document.createElement('article');
-    const title = window.document.createElement('strong');
-    title.textContent = meal.summary;
-    wrapper.append(title,recipe);
-    enrichDinnerEvents(wrapper,day);
     article.append(recipe);
+    enrichDinnerEvents(article,day);
   }
 
   function updateHouseholdWidgets() {
