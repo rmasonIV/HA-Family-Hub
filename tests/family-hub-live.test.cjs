@@ -701,6 +701,49 @@ function setupThermostat(t, callService) {
   return {card, tile, buttons, publish, toggle:root.querySelector('button.quick-control')};
 }
 
+test('collapsed previews follow configured actions and only expand the ribbon', async t => {
+  const services = [];
+  const details = [];
+  const {card, root, find, hass} = setup(t, {
+    actions:['light.office', thermostatId, switchId],
+    ribbon_default:'collapsed',
+    action_appearance:{[thermostatId]:{name:'Thermostat', icon:'mdi:thermometer'}}
+  }, {callService:async (...args) => services.push(args)});
+  card.addEventListener('hass-more-info', event => details.push(event.detail.entityId));
+  const toggle = find('#quick-toggle');
+  const previews = find('#quick-previews');
+  const controls = find('#quick-controls');
+  const buttons = [...previews.querySelectorAll('button')];
+  assert.deepEqual(buttons.map(button => button.textContent), ['Office', 'Thermostat', switchId]);
+  assert.equal(buttons[1].querySelector('ha-icon').icon, 'mdi:thermometer');
+  assert.equal(buttons[2].querySelector('ha-icon').icon, 'mdi:toggle-switch');
+  card.hass = {...hass, states:{...hass.states, [switchId]:{
+    state:'unavailable', attributes:{friendly_name:'Living Room'}
+  }}};
+  assert.deepEqual(buttons.map(button => button.textContent), ['Office', 'Thermostat', 'Living Room']);
+  assert.equal(controls.hidden, true);
+  for (const button of buttons) {
+    assert.equal(previews.hidden, false);
+    assert.equal(button.getAttribute('aria-controls'), controls.id);
+    assert.equal(button.getAttribute('aria-expanded'), 'false');
+    assert.equal(button.getAttribute('aria-label'), 'Expand Quick Actions: ' + button.textContent);
+    button.click();
+    assert.equal(previews.hidden, true);
+    assert.equal(controls.hidden, false);
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+    assert.equal(root.activeElement, toggle);
+    assert.deepEqual(services, []);
+    assert.deepEqual(details, []);
+    toggle.click();
+  }
+  buttons[0].click();
+  controls.querySelector('button.quick-control').click();
+  await tick();
+  assert.equal(services.length, 1);
+  assert.equal(services[0][0], 'light');
+  assert.equal(services[0][1], 'toggle');
+});
+
 test('thermostat displays reported values, applies its step and limits, and preserves switch toggles', async t => {
   const requests = [];
   let finish;

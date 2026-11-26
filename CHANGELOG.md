@@ -19,6 +19,10 @@ in [CHANGELOG_ARCHIVE.md](CHANGELOG_ARCHIVE.md).
 
 ## Changelog
 
+### Unreleased
+
+- Family Hub Live shows icon and label previews for configured actions when Quick Actions is collapsed. Tapping a preview expands the ribbon. Heat/Cool places its low and high setpoints side by side when space allows, with 44 px temperature buttons.
+
 ### v1.135.4
 
 - Fix: household report, verbatim, "Sometimes the UI shows the month
