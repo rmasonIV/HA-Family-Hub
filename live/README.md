@@ -25,12 +25,12 @@ To test a development checkout on a Home Assistant installation that already has
 | `actions` | Empty list | Up to four unique supported entity IDs. Actions support lights, switches, input booleans, scripts, buttons, input buttons, covers, and climate entities. Covers only offer opening from the closed state and ask for confirmation. |
 | `action_appearance` | Domain icon and theme fill | Map action IDs to an optional `icon`, `off_color`, and `on_color`. Use `off_color` for actions other than toggles. Climate actions also accept an optional `name`. |
 | `ribbon_default` | `expanded` | Starts Quick Actions `expanded` or `collapsed`. The header toggles it for the current visit. |
-| `widgets` | Empty list | Up to four unique top-level built-in card configurations or entity IDs. |
+| `widgets` | Empty list | Up to four built-in card configurations, entity IDs, or Family Hub widgets: `upcoming-event`, `countdown`, `tonights-dinner`. |
 | `widget_layout` | `grid` | Responsive side-by-side cards. Use `wide` for a full-width stack at every size. |
 | `appearance.frame` | `off` | `retro_tv` surrounds the calendar with a woodgrain TV frame. |
 | `appearance.seasonal_accent` | `off` | `christmas_retro` adds static holly sprigs to the upper perimeter. |
 
-Click a calendar legend button to show just that calendar. Click a different button to switch calendars, or click the selected button again to restore all calendars. The choice follows you between Week and Month and applies to their day details. The card starts with all calendars visible.
+Calendar legend names now appear as filled rounded labels using their configured colors with automatic high-contrast text. Clicking a legend label filters events and dims the other labels. Click a calendar legend button to show just that calendar. Click a different button to switch calendars, or click the selected button again to restore all calendars. The choice follows you between Week and Month and applies to their day details. The card starts with all calendars visible.
 
 In Week, use **‹** and **›** to move one week at a time. **This week** jumps back to the current week. The date range uses your configured Sunday or Monday start, and the card keeps the week you are browsing through a refresh or view switch. Forecast icons appear on dates with data from your provider. In Month, the current week has a slightly taller minimum row height, using the same configured week start and Home Assistant time zone.
 
@@ -38,6 +38,25 @@ In Month, today's date has its own marker and the selected date has a tinted cel
 
 Calendar events refresh every five minutes while the card is open. The refresh updates today's highlight and advances an open pane that was showing today. A pane showing a different date stays on that date. Home Assistant sends daily forecast updates through its weather subscription, and entity updates move the current-temperature marker.
 
+
+## Household Quick Widgets
+
+Add these from the visual editor under **Quick Widgets**, or configure them in YAML. Each occupies one of the same four widget slots, and no extra service, model, or subscription is needed.
+
+```yaml
+widgets:
+  - type: upcoming-event
+  - type: countdown
+    calendar: calendar.family_calendar
+    event: Vacation
+  - type: tonights-dinner
+```
+
+- **What's next** displays the earliest unfinished event in the calendar ranges already loaded, its title, and a time-remaining indication for timed events. It follows the current legend filter.
+- **Countdown** provides an event selector directly within the widget. Optional `calendar` and `event` (case-insensitive title substring) narrow the eligible events; the selection lasts while the card is mounted. It follows the current legend filter. It is limited to the currently loaded calendar range, not a guaranteed search of every future month.
+- **Tonight's dinner** shows the first event on today's configured Mealie calendar, and reuses the existing permission-checked Mealie meal-plan lookup to show a recipe link and image when available. The Mealie integration and the existing `mealie` card settings are required. Dinner is independent of the legend filter.
+
+Past events are lightly dimmed in the calendar, including day details, and retain their full titles and notes. The clock-driven display updates on the card's existing five-minute refresh and Home Assistant state updates; it is not a second-by-second timer. All titles and recipe descriptions render as text and the existing Mealie URL restrictions continue to apply.
 
 ## Family Assistant
 
