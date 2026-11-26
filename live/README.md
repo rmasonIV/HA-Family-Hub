@@ -24,7 +24,7 @@ To test a development checkout on a Home Assistant installation that already has
 | `week_start` | `monday` | First column in both views. Choose `monday` or `sunday`. |
 | `actions` | Empty list | Up to four unique supported entity IDs. Actions support lights, switches, input booleans, scripts, buttons, input buttons, covers, and climate entities. Covers only offer opening from the closed state and ask for confirmation. |
 | `action_appearance` | Domain icon and theme fill | Map action IDs to an optional `icon`, `off_color`, and `on_color`. Use `off_color` for actions other than toggles. Climate actions also accept an optional `name`. |
-| `ribbon_default` | `expanded` | Starts Quick Actions `expanded` or `collapsed`. The header toggles it for the current visit. |
+| `ribbon_default` | `expanded` | Starts Quick Actions `expanded` or `collapsed`. The header toggles it for the current visit. When collapsed, the ribbon shows an icon and label for each configured action. Tap any preview to expand the ribbon, then use the expanded control to operate the device. Swipe across the previews if they extend past the card edge. |
 | `widgets` | Empty list | Up to four unique top-level built-in card configurations or entity IDs. |
 | `widget_layout` | `grid` | Responsive side-by-side cards. Use `wide` for a full-width stack at every size. |
 | `appearance.frame` | `off` | `retro_tv` surrounds the calendar with a woodgrain TV frame. |
@@ -146,7 +146,7 @@ action_appearance:
     icon: mdi:thermostat
 ```
 
-Quick Actions tiles size to their contents and wrap on narrow dashboards. The thermostat shows a smaller indoor reading beneath its name. Tap the name or the indoor reading to open Home Assistant’s climate details. Use the adjacent 44 × 44 px minus and plus buttons to adjust the target displayed between them. Heat and Cool use one stepper. Heat/Cool stacks separate low and high steppers. The buttons use the entity's temperature limits and step, with a one-degree step if none is reported. The active HVAC mode stays as set in Home Assistant. The tile is read-only in other modes or when the entity lacks the required setpoint data. A failed service call appears on the tile, and the readings follow Home Assistant state updates.
+Quick Actions tiles size to their contents and wrap on narrow dashboards. The thermostat shows a smaller indoor reading beneath its name. Tap the name or the indoor reading to open Home Assistant’s climate details. Use the adjacent 44 × 44 px minus and plus buttons to adjust the target displayed between them. Heat and Cool use one stepper. Heat/Cool shows separate low and high steppers side by side when space allows and wraps them on narrow dashboards. The buttons use the entity's temperature limits and step, with a one-degree step if none is reported. The active HVAC mode stays as set in Home Assistant. The tile is read-only in other modes or when the entity lacks the required setpoint data. A failed service call appears on the tile, and the readings follow Home Assistant state updates.
 
 ## Quick Widgets
 
@@ -161,7 +161,7 @@ Quick Actions tiles size to their contents and wrap on narrow dashboards. The th
 
 Each YAML mapping is passed to the corresponding Home Assistant card. Use the card's standard options. Third-party cards and rows, nested cards, and layout containers are unsupported inside Quick Widgets. A separate dashboard card can sit below Family Hub Live. The calendar's `weather_entity` is independent of any optional weather widget, which manages its own Home Assistant display.
 
-In `grid` mode, one card fills the row, two sit side by side, three use three columns, and four use two rows of two. Three columns reduce to two at 720 px of available layout width. At 480 px and below, cards stack. The Quick Actions ribbon keeps its existing four-column layout and switches to two columns at 620 px. Month moves its details below the calendar on narrow displays.
+In `grid` mode, one card fills the row, two sit side by side, three use three columns, and four use two rows of two. Three columns reduce to two at 720 px of available layout width. At 480 px and below, cards stack. Quick Actions tiles wrap to fit the available width. Month moves its details below the calendar on narrow displays.
 
 Family Hub uses Home Assistant's card helpers to create each widget and keeps the same instances through forecast updates, event refreshes, and view switches. Its CSS layout responds to the available width. Home Assistant's Grid card has a configured column count and defaults to square cells, so this layout uses CSS to give the native cards room to size themselves. [Home Assistant Grid card](https://www.home-assistant.io/dashboards/grid/)
 
