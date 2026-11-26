@@ -66,6 +66,8 @@ test('past event styling and upcoming/countdown widgets escape calendar data',as
   const {root}=mount(t);
   await flush();
   assert.ok(root.querySelector('#month-grid .is-past'));
+  // Limit the upcoming-event widget to the Family calendar; the Mealie all-day event starts earlier.
+  root.querySelector('#calendar-legend button').click();
   assert.match(root.querySelector('.household-widget').textContent,/<img src=x onerror=alert\(1\)>/);
   assert.equal(root.querySelector('.household-widget img'),null);
   const widgets=root.querySelectorAll('.household-widget');
