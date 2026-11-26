@@ -51,7 +51,7 @@ test('filled accessible calendar legend retains existing isolation and contrast'
   await flush();
   const buttons=[...root.querySelectorAll('#calendar-legend button')];
   assert.equal(buttons.length,2);
-  assert.equal(buttons[0].style.getPropertyValue('--legend-ink'),'#ffffff');
+  assert.equal(buttons[0].style.getPropertyValue('--legend-ink'),'#172334');
   assert.match(source,/background:var\(--event-color\);color:var\(--legend-ink\)/);
   buttons[0].click();
   assert.equal(buttons[1].hasAttribute('data-inactive'),true);
