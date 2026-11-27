@@ -171,7 +171,7 @@ test('Mealie recipe opens above the calendar and leaves the selected day in plac
   await recipe.getByRole('button',{name:'Close recipe'}).tap();
   await recipe.waitFor({state:'hidden'});
   await page.locator('#week-view').tap();
-  await page.getByRole('button',{name:/Wed 10/}).tap();
+  await page.getByRole('button',{name:'View events for Wed 10',exact:true}).tap();
   const week = page.locator('#week-day-details');
   await week.getByRole('button',{name:/View recipe/}).tap();
   await recipe.getByText('Chickpeas',{exact:true}).waitFor();
