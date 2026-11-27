@@ -23,18 +23,21 @@ jobs:
           sed "s|../custom_components/family_hub/card/family-hub-live.js|./family-hub-live.js|" preview/live.html > preview-build/index.html
           cp custom_components/family_hub/card/family-hub-live.js preview-build/
           node --check preview-build/family-hub-live.js
-          echo 'Download **family-hub-live-preview**, unzip it, and open `index.html` in your browser.' >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: family-hub-live-preview
-          path: preview-build/
-          if-no-files-found: error
+          echo 'Download **family-hub-live-preview**, unzip it, and open `index.html` in your browser. Choose **Calendar legend demo** to try 15 fictional calendars and the card editor.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Test calendar appearance in Chromium
+      - name: Test calendar appearance and legend in Chromium
+        env:
+          LEGEND_SCREENSHOTS: ../preview-build
         working-directory: preview
         run: |
           npm ci
           npx playwright install --with-deps chromium
           npm test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: family-hub-live-preview
+          path: preview-build/
+          if-no-files-found: error

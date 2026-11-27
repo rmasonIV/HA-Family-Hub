@@ -18,6 +18,8 @@ To test a development checkout on a Home Assistant installation that already has
 | --- | --- | --- |
 | `calendars` | Empty list | Home Assistant `calendar.*` entity IDs, in legend order. |
 | `calendar_colors` | Rotating palette | Map calendar IDs to quoted six-digit hex colors. The same color appears in the legend, cells, and event details. |
+| `pinned_calendars` | All calendars eligible for the legend | List of calendar IDs to pin. Use `[]` to put every calendar in **Other Calendars**. |
+| `show_legend` | `true` | Show the calendar legend and its overflow control. |
 | `daily_briefing` | Integration setting | Set to `false` to hide AI Briefing on this card. Set to `true` to show status even before setup or to use an existing YAML package. |
 | `weather_entity` | Off | A `weather.*` entity supporting daily forecasts. Select **None** or omit the key to turn calendar weather off. |
 | `default_view` | `week` | Initial calendar view. Use `week`, `month` for the full grid, or `month_details` to open Month with today’s details visible. |
@@ -30,7 +32,22 @@ To test a development checkout on a Home Assistant installation that already has
 | `appearance.frame` | `off` | `retro_tv` surrounds the calendar with a woodgrain TV frame. |
 | `appearance.seasonal_accent` | `off` | `christmas_retro` adds static holly sprigs to the upper perimeter. |
 
-Calendar legend names now appear as filled rounded labels using their configured colors with automatic high-contrast text. Clicking a legend label filters events and dims the other labels. Click a calendar legend button to show just that calendar. Click a different button to switch calendars, or click the selected button again to restore all calendars. The choice follows you between Week and Month and applies to their day details. The card starts with all calendars visible.
+In the visual editor, open **Calendars** and check **Pin to legend** for your most-used calendars. Four or five pins usually fit on a landscape tablet. You can pin any number. The legend keeps one row and places any pins that do not fit alongside unpinned calendars in **Other Calendars**. For example, **Other (8/10)** means eight of the ten calendars in the dialog are currently visible.
+
+Tap a pinned label or use a checkbox in **Other Calendars** to show or hide events immediately. **Select All** and **Clear All** apply to the calendars currently in the dialog. **Done** closes it. Filters follow you between Week, Month and day details for the current visit. All calendars start visible on page load, including newly added calendars. The saved pins control placement, and the AI Briefing uses its own calendar configuration.
+
+Cards without `pinned_calendars` keep the existing quick-filter behavior, with overflow when the row runs out of space. Tap a label to isolate its calendar and tap it again to restore all calendars. Changing a checkbox or using a bulk action in the dialog switches the current visit to individual visibility toggles.
+
+```yaml
+calendars:
+  - calendar.family
+  - calendar.school
+  - calendar.community
+pinned_calendars:
+  - calendar.family
+  - calendar.school
+show_legend: true
+```
 
 In Week, use **‹** and **›** to move one week at a time. **This week** jumps back to the current week. The date range uses your configured Sunday or Monday start, and the card keeps the week you are browsing through a refresh or view switch. Forecast icons appear on dates with data from your provider. In Month, the current week has a slightly taller minimum row height, using the same configured week start and Home Assistant time zone.
 
@@ -270,7 +287,7 @@ widgets:
 - The card skips invalid list entries and duplicates before applying the four-item limits. The first four valid unique actions and widgets are used in YAML order. Equivalent widget mappings are deduplicated even when their key order differs. Two different card configurations may use the same entity. Check the card's configuration message for skipped entries or invalid settings.
 - A missing or unavailable entity may appear as unavailable in its native card. If one widget cannot initialize, check its YAML in a standalone Home Assistant card, correct the entity or options, and save the dashboard. Reload the frontend if card loading failed across all slots.
 - If weather is blank, check that the selected entity provides a **daily** forecast in Home Assistant. Days beyond that provider's forecast window have no weather display. A standalone widget's forecast mode is set on its own YAML mapping.
-- If events seem missing, check the selected calendar legend button, the relevant calendar entity, and Home Assistant's configured time zone.
+- If events seem missing, check the calendar legend and the **Other Calendars** dialog, the relevant calendar entity, and Home Assistant's configured time zone.
 
 ## Screenshots and test data
 

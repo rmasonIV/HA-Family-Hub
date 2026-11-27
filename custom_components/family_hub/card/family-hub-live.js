@@ -189,9 +189,12 @@ function normalizeConfig(input, warnings = []) {
   const weatherEntity = isEntityId(weather) && domainOf(weather) === 'weather' ? weather : '';
   if (weather != null && weather !== '' && !weatherEntity) warnings.push('weather_entity must be a weather entity.');
   const calendars = list('calendars', id => isEntityId(id) && domainOf(id) === 'calendar' && id);
+  const pins = Array.isArray(config.pinned_calendars) ? new Set(config.pinned_calendars) : null;
   return {
     ...config,
     calendars,
+    pinned_calendars:pins ? calendars.filter(id => pins.has(id)) : undefined,
+    show_legend:config.show_legend !== false,
     daily_briefing:typeof config.daily_briefing === "boolean" ? config.daily_briefing : undefined,
     appearance:normalizeAppearance(config.appearance, warnings),
     temperature_comfort:normalizeComfort(config.temperature_comfort, warnings),
@@ -520,11 +523,24 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
   background:color-mix(in srgb,var(--event-color,#4a90e2) 20%,var(--fh-surface));
   border-inline-start:3px solid var(--event-color,#4a90e2);
 }
-.calendar-legend {display:flex;flex-wrap:wrap;gap:2px 6px;padding:0;margin:0;min-inline-size:0;list-style:none;font-size:.85rem}
+.calendar-legend {display:flex;flex:1 1 0;gap:6px;padding:0;margin:0;min-inline-size:min(120px,100%);list-style:none;font-size:.85rem}
 .calendar-legend[hidden] {display:none}
+.calendar-legend > li {flex:none}
+.calendar-legend > li[hidden],#other-calendar-list label[hidden] {display:none}
+#other-calendars-button {padding-inline:8px;background:var(--fh-tint);font-variant-numeric:tabular-nums;white-space:nowrap}
+#other-calendars {box-sizing:border-box;width:min(380px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflow:hidden}
+#other-calendars[open] {display:grid;grid-template-rows:auto auto minmax(0,1fr) auto}
+#other-calendars h2 {margin:0 0 8px;font-size:1.15rem}
+#other-calendars .calendar-filter-actions {display:flex;flex-wrap:wrap;gap:8px}
+#other-calendars .action-button {min-height:44px;padding-inline:12px}
+#other-calendar-list {margin-block:8px;overflow-y:auto;overscroll-behavior:contain}
+#other-calendar-list label {display:flex;align-items:center;gap:10px;min-height:44px;overflow-wrap:anywhere}
+#other-calendar-list input {margin:0;width:20px;height:20px;flex:none}
+#other-calendar-list .calendar-swatch {width:12px;height:12px;border-radius:4px;background:var(--event-color);flex:none}
+
 .calendar-legend button{display:flex;align-items:center;border:0;border-radius:6px;padding:0 2px;min-height:44px;min-width:44px;background:transparent;text-align:start}
-.calendar-legend .legend-label{border-radius:6px;padding:3px 5px;background:var(--event-color);color:var(--legend-ink);font-size:.72rem;font-weight:650;overflow-wrap:anywhere}
-.calendar-legend button[aria-pressed="true"] .legend-label{outline:2px solid var(--event-color);outline-offset:2px}
+.calendar-legend .legend-label{border-radius:6px;padding:3px 5px;background:var(--event-color);color:var(--legend-ink);font-size:.72rem;font-weight:650;white-space:nowrap}
+.calendar-legend button[data-isolated] .legend-label{outline:2px solid var(--event-color);outline-offset:2px}
 .calendar-legend button[data-inactive] .legend-label{opacity:.5}
 .calendar-legend button:focus-visible{outline:3px solid var(--primary-color,#4a90e2);outline-offset:-2px}
 .event.is-past{opacity:.55}
@@ -657,6 +673,15 @@ ${decorated ? '</div>' : ''}
 <button type="button" class="action-button" id="open-recipe-browser" hidden>Browse recipes</button>
 <div class="widget-grid"></div></section>
 </div><p class="muted" id="status" role="status" hidden></p>
+<dialog id="other-calendars" aria-labelledby="other-calendars-title">
+  <h2 id="other-calendars-title">Other Calendars</h2>
+  <div class="calendar-filter-actions">
+    <button type="button" class="action-button" id="select-other-calendars">Select All</button>
+    <button type="button" class="action-button" id="clear-other-calendars">Clear All</button>
+  </div>
+  <div id="other-calendar-list"></div>
+  <form method="dialog"><button class="action-button">Done</button></form>
+</dialog>
 <dialog id="week-day-details" aria-labelledby="week-day-title">
   <div class="detail-header">
     <h2 id="week-day-title"></h2>
@@ -1048,7 +1073,6 @@ function mount(root, host) {
   let selectedDay = host.config.default_view === 'month_details' ? today.getUTCDate() : null;
   let calendarEvents = [];
   let dinnerOutsideView = null;
-  let selectedCalendar = null;
   let mealieSettings = host.config.mealie;
   let mealieSetup;
 
@@ -1225,37 +1249,153 @@ function mount(root, host) {
   updateRibbon();
 
   const legend = document.getElementById('calendar-legend');
+  const otherDialog = document.getElementById('other-calendars');
+  const otherList = document.getElementById('other-calendar-list');
+  const create = tag => window.document.createElement(tag);
   const colors = new Map(host.config.calendars.map((id, index) => [id, calendarColor(host.config, id, index)]));
+  const pins = new Set(host.config.pinned_calendars ?? colors.keys());
+  const hiddenCalendars = host.hiddenCalendars;
+  let isolatedCalendar = null;
+  let legacyFilter = host.config.pinned_calendars === undefined && !hiddenCalendars.size;
+  const isVisible = id => !hiddenCalendars.has(id);
   const legendItems = Array.from(colors, ([id, color]) => {
-    const item = window.document.createElement('li');
-    const button = window.document.createElement('button');
+    const item = create('li');
+    const button = create('button');
+    const label = create('span');
     button.type = 'button';
     button.style.setProperty('--event-color', color);
     button.style.setProperty('--legend-ink', calendarInk(color));
-    const label = window.document.createElement('span');
     label.className = 'legend-label';
     label.textContent = id;
     button.append(label);
-    button.setAttribute('aria-pressed', 'false');
-    button.onclick = () => {
-      selectedCalendar = selectedCalendar === id ? null : id;
-      for (const [calendar, control] of legendItems) {
-        control.setAttribute('aria-pressed', String(calendar === selectedCalendar));
-        control.toggleAttribute('data-inactive', Boolean(selectedCalendar && calendar !== selectedCalendar));
-      }
-      redrawCalendar();
-    };
     item.append(button);
     legend.append(item);
-    return [id, button, label];
-  });
-  legend.hidden = !legendItems.length;
 
-  function dayEvents(date, calendar = selectedCalendar) {
+    const row = create('label');
+    const checkbox = create('input');
+    checkbox.type = 'checkbox';
+    const swatch = create('span');
+    swatch.className = 'calendar-swatch';
+    swatch.style.setProperty('--event-color', color);
+    const name = create('span');
+    name.textContent = id;
+    row.append(checkbox, swatch, name);
+    otherList.append(row);
+
+    button.onclick = () => {
+      if (legacyFilter) {
+        isolatedCalendar = isolatedCalendar === id ? null : id;
+        hiddenCalendars.clear();
+        if (isolatedCalendar) {
+          for (const calendar of colors.keys()) {
+            if (calendar !== id) hiddenCalendars.add(calendar);
+          }
+        }
+        applyCalendarFilter();
+      } else {
+        setCalendarVisibility(id, !isVisible(id));
+        applyCalendarFilter();
+      }
+    };
+    checkbox.onchange = () => {
+      legacyFilter = false;
+      setCalendarVisibility(id, checkbox.checked);
+      applyCalendarFilter();
+    };
+    return {id, item, button, label, row, checkbox, name};
+  });
+  const otherItem = create('li');
+  const otherButton = create('button');
+  otherButton.id = 'other-calendars-button';
+  otherButton.type = 'button';
+  otherButton.setAttribute('aria-haspopup', 'dialog');
+  otherButton.setAttribute('aria-controls', otherDialog.id);
+  otherButton.onclick = () => otherDialog.showModal();
+  otherItem.append(otherButton);
+  // Keep the overflow control out of the legend when there are no overflow calendars.
+  let overflow = [];
+  legend.hidden = !host.config.show_legend || !legendItems.length;
+
+  function setCalendarVisibility(id, visible) {
+    if (visible) hiddenCalendars.delete(id);
+    else hiddenCalendars.add(id);
+  }
+
+  function updateCalendarControls() {
+    for (const {id, button, checkbox} of legendItems) {
+      const visible = isVisible(id);
+      button.setAttribute('aria-pressed', String(legacyFilter ? id === isolatedCalendar : visible));
+      button.toggleAttribute('data-inactive', !visible);
+      button.toggleAttribute('data-isolated', legacyFilter && id === isolatedCalendar);
+      checkbox.checked = visible;
+    }
+    if (overflow.length) {
+      const visible = overflow.filter(({id}) => isVisible(id)).length;
+      otherButton.textContent = 'Other ('+visible+'/'+overflow.length+')';
+      otherButton.setAttribute('aria-label', 'Other Calendars ('+visible+'/'+overflow.length+' visible)');
+    }
+  }
+
+  function applyCalendarFilter() {
+    updateCalendarControls();
+    redrawCalendar();
+    updateBriefings();
+  }
+
+  function setOverflowVisibility(visible) {
+    legacyFilter = false;
+    for (const {id} of overflow) setCalendarVisibility(id, visible);
+    applyCalendarFilter();
+  }
+
+  document.getElementById('select-other-calendars').onclick = () => setOverflowVisibility(true);
+  document.getElementById('clear-other-calendars').onclick = () => setOverflowVisibility(false);
+
+  const candidates = legendItems.filter(({id}) => pins.has(id));
+  let lastLegendWidth;
+  function layoutLegend() {
+    if (legend.hidden) return;
+    const active = root.activeElement;
+    const width = legend.clientWidth;
+    lastLegendWidth = width;
+    for (const {item} of candidates) item.hidden = false;
+    // Reserve space for the largest count so filtering never shifts legend items.
+    otherButton.textContent = 'Other ('+legendItems.length+'/'+legendItems.length+')';
+    legend.append(otherItem);
+    const gap = parseFloat(window.getComputedStyle(legend).columnGap) || 0;
+    const widths = candidates.map(({item}) => item.getBoundingClientRect().width + gap);
+    const total = widths.reduce((sum, size) => sum + size, 0);
+    const needsOverflow = candidates.length !== legendItems.length || (width && total - gap > width);
+    let remaining = needsOverflow && width ? width - otherItem.getBoundingClientRect().width : Infinity;
+    for (const [index, {item}] of candidates.entries()) {
+      item.hidden = remaining < widths[index];
+      if (!item.hidden) remaining -= widths[index];
+    }
+    overflow = legendItems.filter(({item, row, id}) => {
+      item.hidden ||= !pins.has(id);
+      row.hidden = !item.hidden;
+      return item.hidden;
+    });
+    if (!overflow.length) {
+      if (otherDialog.open) otherDialog.close();
+      otherItem.remove();
+      if (active === otherButton) candidates[0]?.button.focus();
+    } else if (active?.parentElement.hidden && legend.contains(active)) {
+      otherButton.focus();
+    }
+    updateCalendarControls();
+  }
+
+  const legendObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+    if (lastLegendWidth !== legend.clientWidth) layoutLegend();
+  }) : null;
+  layoutLegend();
+
+  function dayEvents(date, calendar) {
     const start = time.midnight(date);
     const next = time.midnight(addDays(date, 1));
     const pending = [...confirmedEvents.values()].map(({event}) => event);
-    return [...calendarEvents, ...pending].filter(event => (!calendar || event.calendarId === calendar)
+    return [...calendarEvents, ...pending].filter(event => (calendar === undefined ? isVisible(event.calendarId) : !calendar || event.calendarId === calendar)
       && event.start < next && event.end > start).sort((a,b) => a.start-b.start);
   }
 
@@ -1508,7 +1648,7 @@ function mount(root, host) {
 
   function allScheduledEvents() {
     return [...calendarEvents, ...[...confirmedEvents.values()].map(({event}) => event)]
-      .filter(event => !selectedCalendar || selectedCalendar === event.calendarId)
+      .filter(event => isVisible(event.calendarId))
       .sort((a,b) => a.start-b.start);
   }
 
@@ -1638,9 +1778,15 @@ function mount(root, host) {
     if (!hass) return;
     startBriefingSubscription();
     updateBriefings();
-    for (const [id, , label] of legendItems) {
-      label.textContent = hass.states[id]?.attributes.friendly_name || id;
+    if (!legend.hidden && host.isConnected) legendObserver?.observe(legend);
+    let namesChanged = false;
+    for (const {id, label, name} of legendItems) {
+      const next = hass.states[id]?.attributes.friendly_name || id;
+      if (name.textContent === next) continue;
+      name.textContent = label.textContent = next;
+      namesChanged = true;
     }
+    if (namesChanged) layoutLegend();
     const current = weatherEntity()?.attributes.temperature;
     const unit = temperatureUnit();
     if (lastUnit !== unit && forecasts.size) {
@@ -1982,7 +2128,7 @@ function mount(root, host) {
           : 'Briefing uses the calendar IDs in the Home Assistant briefing package.';
       }
     }
-    const filter = !setupStatus && selectedCalendar
+    const filter = !setupStatus && hiddenCalendars.size
       ? 'Briefing uses the configured calendars, independent of this filter.' : '';
     const scopeLabel = section.querySelector('.briefing-scope');
     scopeLabel.textContent = scope;
@@ -2179,6 +2325,8 @@ function mount(root, host) {
     });
   }
   return {loadCalendar, updateEntities, updateWidgets, startWeather, stop() {
+    legendObserver?.disconnect();
+    if (otherDialog.open) otherDialog.close();
     request++;
     mealieSetup = undefined;
     mealieSettings = host.config.mealie;
@@ -2218,9 +2366,10 @@ class FamilyHubLiveEditor extends HTMLElement {
     this.replaceChildren();
     const warnings = [];
     const normalized = normalizeConfig(this.config, warnings);
-    const save = (key, value) => this.dispatchEvent(new CustomEvent('config-changed', {
-      detail:{config:{...this.config,[key]:value}}, bubbles:true, composed:true
+    const saveConfig = config => this.dispatchEvent(new CustomEvent('config-changed', {
+      detail:{config}, bubbles:true, composed:true
     }));
+    const save = (key, value) => saveConfig({...this.config,[key]:value});
     for (const [key, title, limit, allowed] of [
       ['calendars','Calendars',Infinity,id => domainOf(id) === 'calendar'],
       ['actions','Quick Actions',MAX_ITEMS,id => Object.hasOwn(ACTIONS, domainOf(id))],
@@ -2232,6 +2381,17 @@ class FamilyHubLiveEditor extends HTMLElement {
       const heading = document.createElement('legend');
       heading.textContent = title;
       section.append(heading);
+      if (key === 'calendars') {
+        const hint = document.createElement('small');
+        hint.textContent = 'Pin four or five calendars for quick access. All calendars can still show events.';
+        const visibilityLabel = document.createElement('label');
+        const visibility = document.createElement('input');
+        visibility.type = 'checkbox';
+        visibility.checked = normalized.show_legend;
+        visibility.onchange = () => save('show_legend', visibility.checked);
+        visibilityLabel.append(visibility, ' Show calendar legend');
+        section.append(visibilityLabel, document.createElement('br'), hint);
+      }
       for (const [index, entry] of selected.entries()) {
         const id = typeof entry === 'string' ? entry : entry.entity;
         const row = document.createElement('p');
@@ -2240,7 +2400,15 @@ class FamilyHubLiveEditor extends HTMLElement {
         remove.textContent = 'Remove';
         const name = this._hass.states[id]?.attributes.friendly_name || id || entry.title || entry.type;
         remove.setAttribute('aria-label', 'Remove '+name);
-        remove.onclick = () => save(key, selected.filter((_, itemIndex) => itemIndex !== index));
+        remove.onclick = () => {
+          const remaining = selected.filter((_, itemIndex) => itemIndex !== index);
+          if (key === 'calendars' && normalized.pinned_calendars) {
+            saveConfig({...this.config, calendars:remaining,
+              pinned_calendars:normalized.pinned_calendars.filter(calendar => calendar !== id)});
+          } else {
+            save(key, remaining);
+          }
+        };
         row.append(name+' ',remove);
         if (key === 'calendars') {
           const picker = document.createElement('input');
@@ -2248,7 +2416,16 @@ class FamilyHubLiveEditor extends HTMLElement {
           picker.value = calendarColor(this.config, id, selected.indexOf(id));
           picker.setAttribute('aria-label', 'Calendar color for '+name);
           picker.onchange = () => save('calendar_colors', {...this.config.calendar_colors,[id]:picker.value});
-          row.append(' ',picker);
+          const pinLabel = document.createElement('label');
+          const pin = document.createElement('input');
+          const pinned = normalized.pinned_calendars ?? selected;
+          pin.type = 'checkbox';
+          pin.checked = pinned.includes(id);
+          pin.setAttribute('aria-label', 'Pin '+name+' to legend');
+          pin.onchange = () => save('pinned_calendars', pin.checked
+            ? [...pinned, id] : pinned.filter(calendar => calendar !== id));
+          pinLabel.append(pin, ' Pin to legend');
+          row.append(' ',picker,' ',pinLabel);
         }
         section.append(row);
         if (key === 'actions') {
@@ -2434,6 +2611,9 @@ class FamilyHubLive extends HTMLElement {
     this.view?.stop();
     this.configWarnings = [];
     this.config = normalizeConfig(config, this.configWarnings);
+    const calendars = new Set(this.config.calendars);
+    this.hiddenCalendars = new Set(this.config.show_legend
+      ? [...(this.hiddenCalendars ?? [])].filter(id => calendars.has(id)) : []);
     const previousWidgets = this.widgetCache;
     this.widgetCache = new Map(this.config.widgets.map(entry => {
       const key = widgetKey(entry);

@@ -182,3 +182,114 @@ test('Mealie recipe opens above the calendar and leaves the selected day in plac
   await page.waitForFunction(() => window.familyHubRecipeDialogs.size === 0, null, {timeout:5000});
   assert.ok(await week.isVisible());
 });
+
+test('calendar legend fits one row and keeps every calendar reachable as the card resizes', async t => {
+  const browser = await chromium.launch({executablePath:process.env.CHROMIUM_PATH});
+  t.after(() => browser.close());
+  const page = await browser.newPage({hasTouch:true, viewport:{width:1600,height:900}});
+  await page.route(/^https?:/, route => route.abort());
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(pathToFileURL(join(__dirname, 'live.html')).href+'?legend&capture');
+  const legend = page.locator('#calendar-legend');
+  const pins = legend.locator('button:has(.legend-label):visible');
+  const other = page.locator('#other-calendars-button');
+  const dialog = page.locator('#other-calendars');
+  const rows = dialog.getByRole('checkbox');
+  const configure = (count, mode) => page.locator('family-hub-live').evaluate((card, {count,mode}) => {
+    const calendars = Object.keys(card.hass.states).filter(id => id.startsWith('calendar.')).slice(0, count);
+    const pinned_calendars = {all:calendars, none:[], mixed:calendars.slice(0, 5)}[mode];
+    card.setConfig({...card.config, calendars, pinned_calendars});
+  }, {count,mode});
+  const assertReachable = async count => {
+    const direct = await pins.count();
+    if (direct === count) {
+      assert.equal(await other.count(), 0);
+    } else {
+      await other.tap();
+      assert.equal(await rows.count(), count - direct);
+      await dialog.getByRole('button', {name:'Done'}).tap();
+    }
+    assert.ok(await legend.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+    assert.equal((await legend.boundingBox()).height, 44);
+  };
+  for (const count of [1,4,5,10,15]) {
+    await configure(count, 'all');
+    assert.equal(await pins.count(), count);
+    await assertReachable(count);
+  }
+  await configure(15, 'legacy');
+  assert.equal(await pins.count(), 15);
+  await assertReachable(15);
+  await configure(15, 'all');
+  await page.setViewportSize({width:390,height:844});
+  await other.waitFor();
+  assert.ok(await pins.count() < 15);
+  await assertReachable(15);
+  await page.setViewportSize({width:1366,height:768});
+  await other.waitFor({state:'hidden'});
+  await assertReachable(15);
+  await configure(10, 'none');
+  assert.equal(await pins.count(), 0);
+  await assertReachable(10);
+  await configure(15, 'mixed');
+  assert.equal(await pins.count(), 5);
+  await assertReachable(15);
+  assert.deepEqual(errors, []);
+});
+
+test('legend and modal filter the same events and the editor saves pins across refresh', async t => {
+  const browser = await chromium.launch({executablePath:process.env.CHROMIUM_PATH});
+  t.after(() => browser.close());
+  const page = await browser.newPage({hasTouch:true, viewport:{width:1366,height:768}});
+  await page.route(/^https?:/, route => route.abort());
+  await page.goto(pathToFileURL(join(__dirname, 'live.html')).href+'?legend');
+  const other = page.locator('#other-calendars-button');
+  const dialog = page.locator('#other-calendars');
+  const legend = page.locator('#calendar-legend');
+  const family = legend.getByRole('button', {name:'Family', exact:true});
+  const familyEvent = page.locator('#month-grid .event').filter({hasText:'Dinner with friends'});
+  const libraryEvent = page.locator('#month-grid .event').filter({hasText:'Return library books'});
+  await familyEvent.waitFor();
+  await libraryEvent.waitFor();
+  assert.equal(await other.textContent(), 'Other (10/10)');
+  if (process.env.LEGEND_SCREENSHOTS) {
+    await page.screenshot({path:join(process.env.LEGEND_SCREENSHOTS, 'calendar-legend-wall.png')});
+  }
+  await other.tap();
+  const library = dialog.getByRole('checkbox', {name:'Library', exact:true});
+  await library.uncheck();
+  await libraryEvent.waitFor({state:'detached'});
+  assert.equal(await other.textContent(), 'Other (9/10)');
+  await dialog.getByRole('button', {name:'Clear All'}).tap();
+  assert.equal(await dialog.locator('input:checked').count(), 0);
+  assert.equal(await other.textContent(), 'Other (0/10)');
+  assert.equal(await familyEvent.count(), 1);
+  await dialog.getByRole('button', {name:'Select All'}).tap();
+  await libraryEvent.waitFor();
+  await dialog.getByRole('button', {name:'Done'}).tap();
+  await family.tap();
+  await familyEvent.waitFor({state:'detached'});
+  assert.equal(await libraryEvent.count(), 1);
+  await family.tap();
+  await familyEvent.waitFor();
+  await page.locator('#calendar-settings summary').tap();
+  await page.getByRole('checkbox', {name:'Pin Family to legend',exact:true}).uncheck();
+  assert.equal(await family.count(), 0);
+  await familyEvent.waitFor();
+  await page.reload();
+  await familyEvent.waitFor();
+  assert.equal(await family.count(), 0);
+  assert.equal(await other.textContent(), 'Other (11/11)');
+  await page.locator('#theme').tap();
+  await page.setViewportSize({width:390,height:844});
+  await other.tap();
+  assert.ok(await dialog.getByRole('checkbox', {name:'Family',exact:true}).isChecked());
+  const surface = await dialog.evaluate(node => getComputedStyle(node).backgroundColor);
+  assert.equal(surface, 'rgb(32, 41, 56)');
+  if (process.env.LEGEND_SCREENSHOTS) {
+    await page.screenshot({path:join(process.env.LEGEND_SCREENSHOTS, 'calendar-legend-mobile-dark.png')});
+  }
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({state:'hidden'});
+});

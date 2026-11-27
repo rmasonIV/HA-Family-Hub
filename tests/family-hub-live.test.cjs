@@ -855,3 +855,55 @@ test('the Quick Actions editor offers climate entities alongside switches', t =>
   picker.nextElementSibling.click();
   assert.deepEqual(Array.from(config.actions), [switchId, thermostatId]);
 });
+
+test('pins, visibility and briefing scope remain independent as calendars are edited', async t => {
+  const family = 'calendar.family';
+  const school = 'calendar.school';
+  const config = {calendars:[family, school], pinned_calendars:[family], daily_briefing:true};
+  const {window, card, find, hass, calls} = setup(t, config);
+  await tick();
+  const callsBefore = calls.length;
+  const familyButton = find('#calendar-legend li:not([hidden]) .legend-label').parentElement;
+  familyButton.click();
+  assert.doesNotMatch(find('#week-days').textContent, /Evening walk/);
+  assert.match(find('#week-days').textContent, /Library day/);
+  assert.equal(calls.length, callsBefore);
+  assert.equal(card.config.daily_briefing, true);
+
+  const editor = window.document.createElement('family-hub-live-editor');
+  editor.hass = hass;
+  editor.setConfig(config);
+  window.document.body.append(editor);
+  let saved = config;
+  editor.addEventListener('config-changed', ({detail}) => {
+    saved = detail.config;
+    editor.setConfig(saved);
+    card.setConfig(saved);
+  });
+  editor.querySelector('[aria-label="Pin Family to legend"]').click();
+  await tick();
+  assert.deepEqual([...saved.pinned_calendars], []);
+  assert.equal(saved.daily_briefing, true);
+  assert.equal(find('#other-calendars-button').textContent, 'Other (1/2)');
+  assert.doesNotMatch(find('#week-days').textContent, /Evening walk/);
+
+  editor.querySelector('[aria-label="Remove Family"]').click();
+  await tick();
+  assert.deepEqual([...saved.calendars], [school]);
+  assert.equal(find('#other-calendars-button').textContent, 'Other (1/1)');
+  const picker = editor.querySelector('[aria-label="Choose calendars entity"]');
+  picker.value = family;
+  picker.dispatchEvent(new window.Event('change'));
+  picker.nextElementSibling.click();
+  await tick();
+  assert.deepEqual([...saved.calendars], [school, family]);
+  assert.deepEqual([...saved.pinned_calendars], []);
+  assert.equal(find('#other-calendars-button').textContent, 'Other (2/2)');
+  assert.match(find('#week-days').textContent, /Evening walk/);
+
+  card.setConfig({...saved, show_legend:false});
+  await tick();
+  assert.equal(find('#calendar-legend').hidden, true);
+  assert.match(find('#week-days').textContent, /Evening walk/);
+  assert.match(find('#week-days').textContent, /Library day/);
+});

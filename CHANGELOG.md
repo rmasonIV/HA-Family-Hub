@@ -19,6 +19,10 @@ in [CHANGELOG_ARCHIVE.md](CHANGELOG_ARCHIVE.md).
 
 ## Changelog
 
+### 2026.11.4.2 (unreleased)
+
+- Family Hub Live can pin individual calendars to its one-row legend. Other Calendars shows a visible count and offers individual filters and bulk controls. Pins are saved per card and apply independently of event visibility and AI Briefing.
+
 ### 2026.11.4.1 (unreleased)
 
 - An optional recipe browser searches up to 100 matches and pages through the connected Mealie account’s native favorites. Browsing requires opt-in in Family Hub Light and the Live card.
