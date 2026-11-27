@@ -13,6 +13,7 @@ from homeassistant import config_entries
 from homeassistant.components.http.auth import async_sign_path
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
+from homeassistant.exceptions import HomeAssistantError
 
 from . import (
     _build_upcoming_summary,
@@ -23,6 +24,7 @@ from . import (
     _restore_settings_history_snapshot,
     assistant,
     briefing,
+    mealie_read,
     store as chores_store,
     updater,
 )
@@ -588,13 +590,63 @@ class FamilyHubOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_menu(
             step_id="init",
             menu_options=[
-                "settings", "ai_briefing", "family_assistant", "reminders", "test_notify", "upcoming", "restore_backup",
+                "settings", "ai_briefing", "mealie", "family_assistant", "reminders", "test_notify", "upcoming", "restore_backup",
             ],
         )
 
     # Home Assistant's own "Configure" button (Settings -> Devices & Services -> Family Hub -> Configure) already opens this options flow's menu
     async def async_step_settings(self, user_input: dict[str, Any] | None = None):
         return self.async_show_form(step_id="settings", data_schema=vol.Schema({}))
+
+    async def async_step_mealie(self, user_input: dict[str, Any] | None = None):
+        """Bind the dashboard to an existing Mealie Dinner calendar."""
+        saved = self.config_entry.options.get(mealie_read.OPTION, {})
+        errors = {}
+        if user_input is not None:
+            options = dict(self.config_entry.options)
+            if not user_input["enabled"]:
+                options.pop(mealie_read.OPTION, None)
+                return self.async_create_entry(title="", data=options)
+            calendar = user_input.get("calendar", "")
+            url = user_input.get("url", "").strip()
+            group = user_input.get("group", "").strip()
+            entry = mealie_read.dinner_entry(self.hass, calendar)
+            if entry is None:
+                errors["calendar"] = "mealie_calendar"
+            if not mealie_read.valid_link(url, group):
+                errors["url"] = "mealie_link"
+            if not errors:
+                today = dt_util.now().date()
+                try:
+                    await mealie_read.read(self.hass, entry, "get_mealplan", {
+                        "start_date": today, "end_date": today,
+                    })
+                    if user_input["browse"]:
+                        await mealie_read.favorite_ids(entry)
+                except HomeAssistantError:
+                    errors["base"] = "mealie_unavailable"
+            if not errors:
+                options[mealie_read.OPTION] = {
+                    "calendar": calendar, "url": url, "group": group,
+                    "browse": user_input["browse"],
+                }
+                return self.async_create_entry(title="", data=options)
+        schema = vol.Schema({
+            vol.Required("enabled", default=False): selector.BooleanSelector(),
+            vol.Required("browse", default=False): selector.BooleanSelector(),
+            vol.Optional("calendar"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="calendar", integration="mealie")
+            ),
+            vol.Optional("url"): selector.TextSelector(),
+            vol.Optional("group"): selector.TextSelector(),
+        })
+        return self.async_show_form(
+            step_id="mealie",
+            data_schema=self.add_suggested_values_to_schema(
+                schema, user_input if user_input is not None else {**saved, "enabled": bool(saved)}
+            ),
+            errors=errors,
+        )
 
     async def async_step_family_assistant(self, user_input: dict[str, Any] | None = None):
         """Configure the provider and explicit calendar write allowlist."""

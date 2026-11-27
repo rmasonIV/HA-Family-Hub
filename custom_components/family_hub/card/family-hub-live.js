@@ -196,6 +196,7 @@ function normalizeConfig(input, warnings = []) {
     appearance:normalizeAppearance(config.appearance, warnings),
     temperature_comfort:normalizeComfort(config.temperature_comfort, warnings),
     mealie:normalizeMealie(config.mealie, calendars, warnings),
+    recipe_browser:config.recipe_browser === true,
     actions:list('actions', id => isEntityId(id) && Object.hasOwn(ACTIONS,domainOf(id)) && id, MAX_ITEMS),
     widgets:list('widgets', widgetKey, MAX_ITEMS),
     weather_entity:weatherEntity,
@@ -332,6 +333,7 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .layout{display:grid;gap:14px;margin-top:16px}
 .quick-actions{background:white;border:1px solid #dce2e9;border-radius:12px}
 .quick-header{display:flex;align-items:center;gap:8px;padding:0 10px}
+.quick-header:has(#quick-toggle[aria-expanded="false"]){cursor:pointer}
 .quick-header button{min-height:44px;border:0;background:transparent;color:inherit}
 #quick-toggle{flex:none;text-align:left;font-weight:600}
 #quick-toggle[aria-expanded="true"],#quick-toggle:has(+ .quick-previews[hidden]){flex:1}
@@ -436,6 +438,17 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .meal-recipe img{inline-size:112px;block-size:84px;max-inline-size:100%;border-radius:6px;object-fit:cover}
 .meal-recipe a{color:var(--link-text-color,var(--primary-text-color,inherit));font-weight:600;padding-block:8px}
 .meal-recipe:empty{display:none}
+.meal-recipe button,#recipe-details button,#recipe-browser button,#open-recipe-browser{min-height:44px}
+#recipe-browser{inline-size:min(36rem,calc(100% - 32px));max-block-size:85dvh}
+#recipe-browser form,#recipe-browser nav{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+#recipe-browser nav[hidden],#open-recipe-browser[hidden]{display:none}
+#recipe-browser input{min-height:44px;max-inline-size:100%;box-sizing:border-box;font:inherit}
+#recipe-browser ul{list-style:none;padding:0}
+#recipe-browser li button{text-align:start;overflow-wrap:anywhere}
+#recipe-details{inline-size:min(36rem,calc(100% - 32px));max-block-size:85dvh}
+#recipe-details li{margin-block:6px;white-space:pre-line;overflow-wrap:anywhere}
+.recipe-time{display:block;margin-block:4px}
+.dinner-entry + .dinner-entry{margin-top:8px}
 .event-meta{display:flex;align-items:baseline;gap:6px}
 .event-icon{flex:0 0 1.2em;text-align:center}
 .day-event details{margin-top:6px}
@@ -509,10 +522,11 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
 }
 .calendar-legend {display:flex;flex-wrap:wrap;gap:2px 6px;padding:0;margin:0;min-inline-size:0;list-style:none;font-size:.85rem}
 .calendar-legend[hidden] {display:none}
-.calendar-legend button{display:flex;align-items:center;border:2px solid transparent;border-radius:9px;padding:5px 10px;min-height:36px;background:var(--event-color);color:var(--legend-ink);font-weight:650;text-align:start;overflow-wrap:anywhere}
-.calendar-legend button[aria-pressed="true"]{outline:2px solid var(--event-color);outline-offset:2px}
-.calendar-legend button[data-inactive="true"]{opacity:.5}
-.calendar-legend button:focus-visible{outline:3px solid var(--primary-color,#4a90e2);outline-offset:2px}
+.calendar-legend button{display:flex;align-items:center;border:0;border-radius:6px;padding:0 2px;min-height:44px;min-width:44px;background:transparent;text-align:start}
+.calendar-legend .legend-label{border-radius:6px;padding:3px 5px;background:var(--event-color);color:var(--legend-ink);font-size:.72rem;font-weight:650;overflow-wrap:anywhere}
+.calendar-legend button[aria-pressed="true"] .legend-label{outline:2px solid var(--event-color);outline-offset:2px}
+.calendar-legend button[data-inactive] .legend-label{opacity:.5}
+.calendar-legend button:focus-visible{outline:3px solid var(--primary-color,#4a90e2);outline-offset:-2px}
 .event.is-past{opacity:.55}
 @container (max-width:720px) {.widget-grid[data-count="3"]{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container (max-width:480px) {.widget-grid[data-count]{grid-template-columns:minmax(0,1fr)}}
@@ -640,6 +654,7 @@ ${decorated ? `<div class="calendar-surround" data-frame="${frame}" data-seasona
 ${decorated ? '</div>' : ''}
 <section class="side" id="widget-panel" aria-labelledby="widgets-title">
 <h3 id="widgets-title">Quick Widgets</h3>
+<button type="button" class="action-button" id="open-recipe-browser" hidden>Browse recipes</button>
 <div class="widget-grid"></div></section>
 </div><p class="muted" id="status" role="status" hidden></p>
 <dialog id="week-day-details" aria-labelledby="week-day-title">
@@ -649,6 +664,30 @@ ${decorated ? '</div>' : ''}
   </div>
   <div id="week-day-weather"></div>
   ${daySummaryMarkup}<div id="week-day-events"></div>
+</dialog>
+<dialog id="recipe-browser" aria-labelledby="recipe-browser-title">
+  <div class="detail-header">
+    <h2 id="recipe-browser-title">Recipes</h2>
+    <button type="button" class="action-button" aria-label="Close recipe browser">×</button>
+  </div>
+  <form role="search">
+    <input type="search" aria-label="Search Mealie recipes" maxlength="120" required>
+    <button class="action-button">Search</button>
+    <button type="button" class="action-button recipe-favorites">Favorites</button>
+  </form>
+  <p role="status"></p>
+  <ul></ul>
+  <nav aria-label="Recipe results pages" hidden>
+    <button type="button" class="action-button recipe-previous">Previous</button>
+    <button type="button" class="action-button recipe-next">Next</button>
+  </nav>
+</dialog>
+<dialog id="recipe-details" aria-labelledby="recipe-title">
+  <div class="detail-header">
+    <h2 id="recipe-title"></h2>
+    <button type="button" class="action-button" aria-label="Close recipe">×</button>
+  </div>
+  <div class="recipe-content"></div>
 </dialog>
 <dialog id="forecast-details" aria-labelledby="forecast-title">
   <div class="detail-header">
@@ -967,6 +1006,27 @@ function mount(root, host) {
   const monthGrid = document.getElementById('month-grid');
   const dayDetails = document.getElementById('day-details');
   const weekDetails = document.getElementById('week-day-details');
+  const recipeDialog = document.getElementById('recipe-details');
+  const recipeContent = recipeDialog.querySelector('.recipe-content');
+  const closeRecipe = recipeDialog.querySelector('button');
+  const recipeDetailsCache = new Map();
+  let recipeRequest = 0;
+  let recipeTrigger;
+  const pauseIdle = () => {
+    (window.familyHubRecipeDialogs ??= new Set()).add(recipeDialog);
+  };
+  function resumeIdle() {
+    window.familyHubRecipeDialogs?.delete(recipeDialog);
+  }
+  closeRecipe.onclick = () => recipeDialog.close();
+  recipeDialog.addEventListener('close', () => {
+    if (recipeDialog.open) return;
+    recipeRequest++;
+    resumeIdle();
+    if (recipeTrigger?.isConnected) recipeTrigger.focus();
+    else if (weekDetails.open) weekDetails.querySelector('button').focus();
+    else root.querySelector('[data-day][aria-expanded="true"]')?.focus();
+  });
   let weekDetailDate = null;
   let briefingResponse;
   let briefingPending;
@@ -987,7 +1047,43 @@ function mount(root, host) {
   let month = monthDate(today);
   let selectedDay = host.config.default_view === 'month_details' ? today.getUTCDate() : null;
   let calendarEvents = [];
+  let dinnerOutsideView = null;
   let selectedCalendar = null;
+  let mealieSettings = host.config.mealie;
+  let mealieSetup;
+
+  function loadMealieSettings() {
+    if (host.config.mealie) return;
+    const hass = host.hass;
+    if (!hass || mealieSetup) return;
+    const pending = Promise.resolve().then(() => hass.callWS({
+      type:'family_hub/mealie_read', operation:'settings'
+    })).then(settings => {
+      if (mealieSetup !== pending || !host.config.calendars.includes(settings?.calendar)) return;
+      const links = settings.url ? normalizeMealie({
+        ...settings, config_entry_id:'integration'
+      }, host.config.calendars, []) : null;
+      mealieSettings = {
+        calendar:settings.calendar, base:links?.base, group:links?.group, browse:settings.browse === true
+      };
+      loadCalendar();
+    }).catch(() => {});
+    mealieSetup = pending;
+  }
+
+  async function readMealie(operation, value, page = 1, day) {
+    if (!host.config.mealie) return host.hass.callWS({
+      type:'family_hub/mealie_read', operation, value, page, calendar:mealieSettings.calendar, ...(day ? {day} : {})
+    });
+    const data = operation === 'mealplan'
+      ? {start_date:value, end_date:value}
+      : {recipe_id:value};
+    const message = await host.hass.callWS({
+      type:'call_service', domain:'mealie', service:operation === 'mealplan' ? 'get_mealplan' : 'get_recipe',
+      return_response:true, service_data:{config_entry_id:mealieSettings.config_entry_id, ...data}
+    });
+    return message?.response;
+  }
   const forecasts = new Map();
   let subscription;
   const weatherStatus = document.getElementById('weather-status');
@@ -1120,6 +1216,12 @@ function mount(root, host) {
     toggle.setAttribute('aria-expanded', String(expanded));
   }
   toggle.onclick = () => { expanded = !expanded; updateRibbon(); };
+  toggle.parentElement.onclick = event => {
+    if (expanded || event.target.closest('button')) return;
+    expanded = true;
+    updateRibbon();
+    toggle.focus();
+  };
   updateRibbon();
 
   const legend = document.getElementById('calendar-legend');
@@ -1130,7 +1232,10 @@ function mount(root, host) {
     button.type = 'button';
     button.style.setProperty('--event-color', color);
     button.style.setProperty('--legend-ink', calendarInk(color));
-    button.textContent = id;
+    const label = window.document.createElement('span');
+    label.className = 'legend-label';
+    label.textContent = id;
+    button.append(label);
     button.setAttribute('aria-pressed', 'false');
     button.onclick = () => {
       selectedCalendar = selectedCalendar === id ? null : id;
@@ -1142,7 +1247,7 @@ function mount(root, host) {
     };
     item.append(button);
     legend.append(item);
-    return [id, button];
+    return [id, button, label];
   });
   legend.hidden = !legendItems.length;
 
@@ -1232,6 +1337,7 @@ function mount(root, host) {
     startWeather();
     if (!hass) return;
     assistant.refresh();
+    if (config.calendars.length) loadMealieSettings();
     if (!config.calendars.length) {
       calendarStatus.textContent = 'Choose calendars in the card editor.';
       return;
@@ -1243,19 +1349,29 @@ function mount(root, host) {
     // Fetch each visible range independently to avoid pulling events between distant months.
     const ranges = month < weekEnd && monthEnd > weekStart ? [[start,end]] : [[weekStart,weekEnd],[month,monthEnd]];
     calendarStatus.textContent = 'Loading events…';
-    const results = await Promise.allSettled(config.calendars.flatMap(id => ranges.map(async ([from,to]) => {
+    async function loadEvents(id, from, to) {
       const query = new URLSearchParams({start:time.midnight(from).toISOString(), end:time.midnight(to).toISOString()});
       const events = await hass.callApi('GET', 'calendars/'+encodeURIComponent(id)+'?'+query);
       return events.filter(event => event.start && event.end).map(event => {
         const allDay = Boolean(event.start.date);
         // HA's Mealie calendar can give an all-day dinner the same start and end date.
-        const end = id === config.mealie?.calendar && allDay && event.start.date === event.end.date
+        const end = id === mealieSettings?.calendar && allDay && event.start.date === event.end.date
           ? time.midnight(addDays(new Date(event.start.date), 1))
           : endpoint(event.end);
         return {...event, calendarId:id, start:endpoint(event.start), end, allDay};
       });
-    })));
+    }
+    const includeDinner = mealieSettings && config.widgets.some(widget => widget.type === 'tonights-dinner') &&
+      !ranges.some(([from,to]) => today >= from && today < to);
+    const [results, outside] = await Promise.all([
+      Promise.allSettled(config.calendars.flatMap(id => ranges.map(([from,to]) => loadEvents(id, from, to)))),
+      includeDinner ? loadEvents(mealieSettings.calendar, newToday, addDays(newToday,1))
+        .then(events => ({day:dateKey(newToday), meals:events.filter(event =>
+          event.start < time.midnight(addDays(newToday,1)) && event.end > time.midnight(newToday)
+        )})).catch(() => ({day:dateKey(newToday), meals:null})) : null
+    ]);
     if (current !== request) return;
+    dinnerOutsideView = outside;
     calendarEvents = results.flatMap(result => result.status === 'fulfilled' ? result.value : [])
       .sort((a,b) => a.start-b.start);
     for (const event of calendarEvents) confirmedEvents.delete(eventKey(event));
@@ -1312,7 +1428,83 @@ function mount(root, host) {
     return {key, entry, slot, status};
   });
   widgetGrid.dataset.count = String(widgets.length);
-  widgetPanel.hidden = !widgets.length;
+  const browseButton = document.getElementById('open-recipe-browser');
+  const browserDialog = document.getElementById('recipe-browser');
+  const searchForm = browserDialog.querySelector('form');
+  const searchBox = searchForm.querySelector('input');
+  const browseStatus = browserDialog.querySelector('[role="status"]');
+  const browseResults = browserDialog.querySelector('ul');
+  const browsePages = browserDialog.querySelector('nav');
+  const previousPage = browserDialog.querySelector('.recipe-previous');
+  const nextPage = browserDialog.querySelector('.recipe-next');
+  const browseCache = new Map();
+  let browseRequest = 0;
+  let browseMode = 'search';
+  let browseText = '';
+  let browsePage = 1;
+
+  function updateRecipeBrowser() {
+    browseButton.hidden = !(host.config.recipe_browser && mealieSettings?.browse);
+    widgetPanel.hidden = !widgets.length && browseButton.hidden;
+  }
+  updateRecipeBrowser();
+  browseButton.onclick = () => {
+    if (!browserDialog.open) browserDialog.showModal();
+    searchBox.focus();
+  };
+  browserDialog.querySelector('[aria-label="Close recipe browser"]').onclick = () => browserDialog.close();
+  browserDialog.addEventListener('close', () => browseRequest++);
+  searchForm.onsubmit = event => {
+    event.preventDefault();
+    const query = searchBox.value.trim();
+    if (query) showRecipeResults('search', query, 1);
+  };
+  searchForm.querySelector('.recipe-favorites').onclick = () => showRecipeResults('favorites', '', 1);
+  previousPage.onclick = () => showRecipeResults(browseMode, browseText, browsePage-1);
+  nextPage.onclick = () => showRecipeResults(browseMode, browseText, browsePage+1);
+
+  async function showRecipeResults(mode, query, page) {
+    const current = ++browseRequest;
+    browsePages.hidden = true;
+    browseResults.replaceChildren();
+    browseStatus.textContent = mode === 'favorites' ? 'Loading favorites…' : 'Searching recipes…';
+    const key = mode === 'favorites' ? 'favorites:'+page : 'search:'+query;
+    const result = await cachedMealieRead(browseCache, key, 16, async () => {
+      const data = await readMealie(mode, query, mode === 'favorites' ? page : 1);
+      if (!Array.isArray(data?.items)) throw new Error('Invalid recipe results');
+      return data;
+    });
+    if (current !== browseRequest || !browserDialog.open) return;
+    if (!result) {
+      browseStatus.textContent = 'Recipe results unavailable.';
+      return;
+    }
+    const pageSize = 8;
+    const start = (page-1)*pageSize;
+    const items = mode === 'favorites' ? result.items : result.items.slice(start,start+pageSize);
+    for (const recipe of items) {
+      if (typeof recipe?.name !== 'string' || !isPathSegment(recipe.slug)) continue;
+      const item = window.document.createElement('li');
+      const button = window.document.createElement('button');
+      button.type = 'button';
+      button.className = 'action-button';
+      button.textContent = recipe.name;
+      button.onclick = () => openRecipe(recipe, button);
+      item.append(button);
+      browseResults.append(item);
+    }
+    const hasMore = mode === 'favorites' ? page < 1000 && result.has_more : start+pageSize < result.items.length;
+    browseMode = mode;
+    browseText = query;
+    browsePage = page;
+    previousPage.disabled = page === 1;
+    nextPage.disabled = !hasMore;
+    browsePages.hidden = page === 1 && !hasMore;
+    const heading = mode === 'favorites' ? 'Favorites' : 'Search results';
+    browseStatus.textContent = browseResults.childElementCount
+      ? heading + ' · Page ' + page
+      : mode === 'favorites' ? 'No favorites found.' : 'No recipes found.';
+  }
 
   function allScheduledEvents() {
     return [...calendarEvents, ...[...confirmedEvents.values()].map(({event}) => event)]
@@ -1373,21 +1565,27 @@ function mount(root, host) {
       line('p',target.start.getTime() <= now ? 'Happening now' : days+' day'+(days === 1?'':'s')+' away');
       return;
     }
-    const mealie = host.config.mealie;
-    if (!mealie) {line('small','Configure Mealie in Family Hub Live settings.');return;}
+    const mealie = mealieSettings;
+    if (!mealie) {line('small','Set up Mealie under Family Hub Light → Configure and add its Dinner calendar to this card.');return;}
     const day = time.dayAt(now);
-    const meals = dayEvents(day,mealie.calendar);
+    const meals = dinnerOutsideView?.day === dateKey(day) ? dinnerOutsideView.meals : dayEvents(day,mealie.calendar);
+    if (!meals) {line('small','Dinner calendar unavailable.');return;}
     if (!meals.length) {line('small','No dinner planned today.');return;}
-    const meal = meals[0];
-    line('strong',meal.summary);
-    const recipe = window.document.createElement('div');
-    recipe.className = 'meal-recipe';
-    // Reuse the existing guarded Mealie recipe resolver and five-minute cache.
-    article.append(recipe);
-    enrichDinnerEvents(article,day);
+    for (const meal of meals) {
+      const entry = window.document.createElement('div');
+      entry.className = 'dinner-entry';
+      const title = window.document.createElement('strong');
+      title.textContent = meal.summary;
+      const recipe = window.document.createElement('div');
+      recipe.className = 'meal-recipe';
+      entry.append(title, recipe);
+      article.append(entry);
+    }
+    enrichDinnerEvents(article, day);
   }
 
   function updateHouseholdWidgets() {
+    updateRecipeBrowser();
     if (!host.isConnected) return;
     for (const {entry,slot} of widgets) {
       if (HOUSEHOLD_WIDGETS.has(entry.config.type)) renderHouseholdWidget(entry,slot);
@@ -1440,8 +1638,8 @@ function mount(root, host) {
     if (!hass) return;
     startBriefingSubscription();
     updateBriefings();
-    for (const [id, item] of legendItems) {
-      item.textContent = hass.states[id]?.attributes.friendly_name || id;
+    for (const [id, , label] of legendItems) {
+      label.textContent = hass.states[id]?.attributes.friendly_name || id;
     }
     const current = weatherEntity()?.attributes.temperature;
     const unit = temperatureUnit();
@@ -1483,22 +1681,85 @@ function mount(root, host) {
 
   const recipeCache = new Map();
 
-  async function loadDinnerRecipes(day) {
-    const {mealie} = host.config;
-    const message = await host.hass.callWS({
-      type:'call_service', domain:'mealie', service:'get_mealplan', return_response:true,
-      service_data:{config_entry_id:mealie.config_entry_id, start_date:day, end_date:day}
+  function cachedMealieRead(cache, key, maxEntries, request) {
+    const existing = cache.get(key);
+    if (existing && Date.now() < existing.expires) return existing.result;
+    cache.delete(key);
+    if (cache.size >= maxEntries) cache.delete(cache.keys().next().value);
+    const entry = {expires:Date.now()+5*60*1000, result:request().catch(() => {
+      if (cache.get(key) === entry) cache.delete(key);
+      return null;
+    })};
+    cache.set(key, entry);
+    return entry.result;
+  }
+
+  async function openRecipe(summary, trigger, day) {
+    const current = ++recipeRequest;
+    recipeTrigger = trigger;
+    document.getElementById('recipe-title').textContent = summary.name;
+    const status = window.document.createElement('p');
+    status.setAttribute('role', 'status');
+    status.textContent = 'Loading recipe…';
+    recipeContent.replaceChildren(status);
+    if (!recipeDialog.open) recipeDialog.showModal();
+    pauseIdle();
+    closeRecipe.focus();
+    const id = isPathSegment(summary.recipe_id) ? summary.recipe_id : summary.slug;
+    const detail = await cachedMealieRead(recipeDetailsCache, id, 24, async () => {
+      const result = await readMealie('recipe', id, 1, day);
+      if (!isRecord(result?.recipe)) throw new Error('Invalid recipe response');
+      return result.recipe;
     });
-    const meals = message?.response?.mealplan;
+    if (current !== recipeRequest || !recipeDialog.open) return;
+    if (!detail) {
+      status.textContent = 'Recipe details unavailable.';
+      return;
+    }
+    const appendText = (tag, text, parent = recipeContent) => {
+      const element = window.document.createElement(tag);
+      element.textContent = text;
+      parent.append(element);
+      return element;
+    };
+    recipeContent.replaceChildren();
+    if (typeof detail.description === 'string' && detail.description.trim()) {
+      appendText('p', detail.description);
+    }
+    if (typeof detail.total_time === 'string' && detail.total_time.trim()) {
+      appendText('p', 'Total time: ' + detail.total_time);
+    }
+    const sections = [
+      ['Ingredients', 'ul', detail.ingredients, ingredient =>
+        ingredient?.display || ingredient?.original_text ||
+        [ingredient?.quantity || '', ingredient?.unit?.name, ingredient?.food?.name, ingredient?.note]
+          .filter(Boolean).join(' ')],
+      ['Instructions', 'ol', detail.instructions, instruction => instruction?.text]
+    ];
+    for (const [title, tag, items, text] of sections) {
+      if (!Array.isArray(items)) continue;
+      const lines = items.slice(0, 250).map(text).filter(line => typeof line === 'string' && line.trim());
+      if (!lines.length) continue;
+      appendText('h3', title);
+      const list = appendText(tag, '');
+      for (const line of lines) appendText('li', line, list);
+    }
+    if (!recipeContent.childElementCount) appendText('p', 'No recipe details available.');
+  }
+
+  async function loadDinnerRecipes(day) {
+    const meals = (await readMealie('mealplan', day))?.mealplan;
     if (!Array.isArray(meals)) throw new Error('Invalid meal plan response');
     const recipes = new Map();
     for (const meal of meals) {
-      const recipe = meal?.recipe;
-      if (meal?.mealplan_date !== day || meal?.entry_type !== 'dinner' || !recipe
-          || typeof recipe.name !== 'string' || !isPathSegment(recipe.slug)) continue;
-      // Calendar events carry the title but no recipe ID. Skip ambiguous same-name recipes.
-      if (!recipes.has(recipe.name)) recipes.set(recipe.name, recipe);
-      else if (recipes.get(recipe.name)?.slug !== recipe.slug) recipes.set(recipe.name, null);
+      if (meal?.mealplan_date !== day || meal?.entry_type !== 'dinner') continue;
+      const recipe = meal.recipe;
+      const name = recipe?.name || meal.title;
+      if (typeof name !== 'string') continue;
+      const match = isPathSegment(recipe?.slug) ? recipe : null;
+      // HA calendar events carry a title but no recipe ID.
+      if (!recipes.has(name)) recipes.set(name, match);
+      else if (!match || recipes.get(name)?.slug !== match.slug) recipes.set(name, null);
     }
     return recipes;
   }
@@ -1507,16 +1768,10 @@ function mount(root, host) {
     const containers = events.querySelectorAll('.meal-recipe');
     if (!containers.length || !host.hass) return;
     const day = dateKey(date);
-    let cached = recipeCache.get(day);
-    if (!cached || Date.now() >= cached.expires) {
-      if (recipeCache.size >= 14) recipeCache.delete(recipeCache.keys().next().value);
-      cached = {expires:Date.now()+5*60*1000, recipes:loadDinnerRecipes(day).catch(() => null)};
-      recipeCache.set(day, cached);
-    }
-    const recipes = await cached.recipes;
-    const {base,group} = host.config.mealie ?? {};
+    const recipes = await cachedMealieRead(recipeCache, day, 14, () => loadDinnerRecipes(day));
+    const {base,group} = mealieSettings ?? {};
     for (const container of containers) {
-      if (!container.isConnected || !base) continue;
+      if (!container.isConnected) continue;
       if (!recipes) {
         container.textContent = 'Recipe details unavailable.';
         continue;
@@ -1524,13 +1779,15 @@ function mount(root, host) {
       const title = container.parentElement.querySelector('strong').textContent;
       const recipe = recipes.get(title);
       if (!recipe) continue;
-      const link = window.document.createElement('a');
-      link.href = new URL(`g/${group}/r/${recipe.slug}`, base).href;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.textContent = 'Open in Mealie ↗';
-      link.setAttribute('aria-label', `Open ${title} in Mealie (new tab)`);
-      if (typeof recipe.image === 'string' && recipe.image.trim() && isPathSegment(recipe.recipe_id)) {
+      const link = base && window.document.createElement('a');
+      if (link) {
+        link.href = new URL(`g/${group}/r/${recipe.slug}`, base).href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'Open in Mealie ↗';
+        link.setAttribute('aria-label', `Open ${title} in Mealie (new tab)`);
+      }
+      if (base && typeof recipe.image === 'string' && recipe.image.trim() && isPathSegment(recipe.recipe_id)) {
         const photo = window.document.createElement('img');
         photo.alt = '';
         photo.referrerPolicy = 'no-referrer';
@@ -1561,7 +1818,20 @@ function mount(root, host) {
           notes.querySelector('.description-preview').remove();
         }
       }
-      copy.append(link);
+      if (typeof recipe.total_time === 'string' && recipe.total_time.trim()) {
+        const time = window.document.createElement('small');
+        time.className = 'recipe-time';
+        time.textContent = 'Total time: ' + recipe.total_time;
+        copy.append(time);
+      }
+      const details = window.document.createElement('button');
+      details.type = 'button';
+      details.className = 'action-button';
+      details.textContent = 'View recipe';
+      details.setAttribute('aria-label', 'View recipe: ' + title);
+      details.onclick = () => openRecipe(recipe, details, day);
+      copy.append(details);
+      if (link) copy.append(link);
       container.append(copy);
     }
   }
@@ -1577,7 +1847,7 @@ function mount(root, host) {
         </summary>
         <p class="description-full">${escapeText(details.description)}</p>
       </details>` : ''}
-      ${details.calendarId === host.config.mealie?.calendar && host.config.mealie ? '<div class="meal-recipe"></div>' : ''}
+      ${details.calendarId === mealieSettings?.calendar && mealieSettings ? '<div class="meal-recipe"></div>' : ''}
     </article>`).join('');
   }
 
@@ -1910,6 +2180,16 @@ function mount(root, host) {
   }
   return {loadCalendar, updateEntities, updateWidgets, startWeather, stop() {
     request++;
+    mealieSetup = undefined;
+    mealieSettings = host.config.mealie;
+    recipeCache.clear();
+    recipeDetailsCache.clear();
+    browseCache.clear();
+    browseRequest++;
+    if (browserDialog.open) browserDialog.close();
+    recipeRequest++;
+    if (recipeDialog.open) recipeDialog.close();
+    resumeIdle();
     window.clearTimeout(retryTimer);
     stopWeather();
     stopBriefingSubscription();
@@ -2131,6 +2411,13 @@ class FamilyHubLiveEditor extends HTMLElement {
     widgetPicker.onchange = () => save('widget_layout', widgetPicker.value);
     widgetLabel.append('Widget layout ',widgetPicker);
     this.append(widgetLabel);
+    const recipesLabel = document.createElement('label');
+    const recipesToggle = document.createElement('input');
+    recipesToggle.type = 'checkbox';
+    recipesToggle.checked = normalized.recipe_browser;
+    recipesToggle.onchange = () => save('recipe_browser', recipesToggle.checked);
+    recipesLabel.append(recipesToggle,' Show recipe browser');
+    this.append(recipesLabel);
     if (warnings.length) {
       const status = document.createElement('p');
       status.textContent = warnings.join(' ');

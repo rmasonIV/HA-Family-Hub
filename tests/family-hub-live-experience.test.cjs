@@ -7,10 +7,15 @@ const {JSDOM} = require(process.env.JSDOM_PATH || 'jsdom');
 const source = readFileSync(join(__dirname,'../custom_components/family_hub/card/family-hub-live.js'),'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-function mount(t, overrides = {}) {
+function mount(t, overrides = {}, {browser = false} = {}) {
   const dom = new JSDOM('', {runScripts:'outside-only',url:'http://localhost/'});
   t.after(() => dom.window.close());
   dom.window.Date.now = () => Date.parse('2026-11-21T02:00:00Z');
+  dom.window.HTMLDialogElement.prototype.showModal = function () {this.open = true;};
+  dom.window.HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+    this.dispatchEvent(new dom.window.Event('close'));
+  };
   dom.window.eval(source);
   const card = dom.window.document.createElement('family-hub-live');
   const data = {
@@ -23,6 +28,8 @@ function mount(t, overrides = {}) {
     ]
   };
   let mealCalls = 0;
+  const browseCalls = [];
+  let detailsCalls = 0;
   card.setConfig({calendars:['calendar.family','calendar.mealie_dinner'],default_view:'month_details',
     mealie:{calendar:'calendar.mealie_dinner',config_entry_id:'entry-test',url:'https://meals.example.test',group:'family'},
     widgets:[{type:'upcoming-event'},{type:'countdown'},{type:'tonights-dinner'}],...overrides});
@@ -34,16 +41,30 @@ function mount(t, overrides = {}) {
     },
     async callApi(_method,path) {return data[decodeURIComponent(path.split('/')[1].split('?')[0])] || [];},
     async callWS(req) {
-      if (req.domain === 'mealie') {
+      if (req.type === 'family_hub/mealie_read' && req.operation === 'settings') {
+        return {calendar:'calendar.mealie_dinner', url:'https://meals.example.test', group:'family', browse:browser};
+      }
+      if (req.operation === 'search' || req.operation === 'favorites') {
+        browseCalls.push(req);
+        const count = req.operation === 'favorites' ? 1 : 10;
+        return {items:Array.from({length:count},(_,i)=>({name:'Recipe '+i,slug:'recipe-'+i}))};
+      }
+      if (req.operation === 'recipe' || req.service === 'get_recipe') {
+        detailsCalls++;
+        const response = {recipe:{ingredients:[{display:'<img src=x> Rice'}],instructions:[{text:'Cook rice.'}]}};
+        return req.domain === 'mealie' ? {response} : response;
+      }
+      if (req.domain === 'mealie' || req.operation === 'mealplan') {
         mealCalls++;
-        return {response:{mealplan:[{mealplan_date:'2026-11-20',entry_type:'dinner',
-          recipe:{name:'Turkey dinner',slug:'turkey-dinner',recipe_id:'recipe-1',image:null}}]}};
+        const response = {mealplan:[{mealplan_date:'2026-11-20',entry_type:'dinner',
+          recipe:{name:'Turkey dinner',slug:'turkey-dinner',recipe_id:'recipe-1',image:null}}]};
+        return req.domain === 'mealie' ? {response} : response;
       }
       throw Error('Unexpected call');
     }
   };
   dom.window.document.body.append(card);
-  return {card,root:card.shadowRoot,get mealCalls(){return mealCalls;}};
+  return {card,root:card.shadowRoot,browseCalls,get mealCalls(){return mealCalls;},get detailsCalls(){return detailsCalls;}};
 }
 
 test('filled accessible calendar legend retains existing isolation and contrast',async t=>{
@@ -52,6 +73,8 @@ test('filled accessible calendar legend retains existing isolation and contrast'
   const buttons=[...root.querySelectorAll('#calendar-legend button')];
   assert.equal(buttons.length,2);
   assert.equal(buttons[0].style.getPropertyValue('--legend-ink'),'#172334');
+  assert.equal(buttons[0].querySelector('.legend-label').textContent,buttons[0].textContent);
+  assert.match(source,/\.calendar-legend button\{[^}]+min-height:44px;min-width:44px/);
   assert.match(source,/background:var\(--event-color\);color:var\(--legend-ink\)/);
   buttons[0].click();
   assert.equal(buttons[1].hasAttribute('data-inactive'),true);
@@ -88,4 +111,46 @@ test('dinner widget reuses Mealie lookup and ignores unsafe widget types',async 
   card.setConfig({calendars:['calendar.family'],widgets:[{type:'countdown',event:'<script>alert(1)</script>'},
     {type:'custom:evil'},{type:'upcoming-event'}]});
   assert.equal(card.config.widgets.length,2);
+});
+
+
+test('integration Mealie settings populate the widget without legacy card YAML',async t=>{
+  const {root}=mount(t,{mealie:undefined});
+  await flush();
+  const dinner=root.querySelectorAll('.household-widget')[2];
+  assert.equal(dinner.querySelector('a')?.href,'https://meals.example.test/g/family/r/turkey-dinner');
+});
+
+
+test('recipe browser pages cached searches, reads favorites, and reuses recipe details',async t=>{
+  const fixture=mount(t,{mealie:undefined,recipe_browser:true},{browser:true});
+  const {root,browseCalls}=fixture;
+  await flush();
+  const opener=root.querySelector('#open-recipe-browser');
+  assert.equal(opener.hidden,false);
+  opener.click();
+  const browser=root.querySelector('#recipe-browser');
+  assert.equal(browser.open,true);
+  browser.querySelector('input').value='Rice';
+  browser.querySelector('form').dispatchEvent(new fixture.card.ownerDocument.defaultView.Event('submit',{cancelable:true}));
+  await flush();
+  assert.equal(browser.querySelectorAll('li').length,8);
+  browser.querySelector('.recipe-next').click();
+  await flush();
+  assert.equal(browser.querySelectorAll('li').length,2);
+  assert.equal(browseCalls.length,1);
+  browser.querySelector('.recipe-favorites').click();
+  await flush();
+  assert.deepEqual(browseCalls.map(call=>call.operation),['search','favorites']);
+  browser.querySelector('li button').click();
+  await flush();
+  const detail=root.querySelector('#recipe-details');
+  assert.equal(detail.open,true);
+  assert.equal(detail.querySelector('li').textContent,'<img src=x> Rice');
+  assert.equal(detail.querySelector('img'),null);
+  detail.querySelector('button').click();
+  assert.equal(browser.open,true);
+  browser.querySelector('li button').click();
+  await flush();
+  assert.equal(fixture.detailsCalls,1);
 });

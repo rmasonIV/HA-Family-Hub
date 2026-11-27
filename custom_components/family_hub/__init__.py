@@ -46,7 +46,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 # Chores/Rewards/Permissions - kept in their own modules (see each file's docstring) rather than folded into this already-huge file.
-from . import assistant, briefing
+from . import assistant, briefing, mealie_read
 from . import chore_engine
 from . import profile
 from . import presence as presence_mod
@@ -10815,6 +10815,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, briefing.ws_subscribe)
     websocket_api.async_register_command(hass, briefing.ws_generate)
     assistant.register(hass)
+    websocket_api.async_register_command(hass, mealie_read.ws_read)
     websocket_api.async_register_command(hass, _ws_list_themes)
     websocket_api.async_register_command(hass, _ws_get_presence)
     websocket_api.async_register_command(hass, _ws_save_themes)

@@ -54,7 +54,7 @@ widgets:
 
 - **What's next** displays the earliest unfinished event in the calendar ranges already loaded, its title, and a time-remaining indication for timed events. It follows the current legend filter.
 - **Countdown** provides an event selector directly within the widget. Optional `calendar` and `event` (case-insensitive title substring) narrow the eligible events; the selection lasts while the card is mounted. It follows the current legend filter. It is limited to the currently loaded calendar range, not a guaranteed search of every future month.
-- **Tonight's dinner** shows the first event on today's configured Mealie calendar, and reuses the existing permission-checked Mealie meal-plan lookup to show a recipe link and image when available. The Mealie integration and the existing `mealie` card settings are required. Dinner is independent of the legend filter.
+- **Tonight's dinner** shows today's entries from the configured Mealie Dinner calendar, and reuses the existing permission-checked Mealie meal-plan lookup to show a recipe link and image when available. Connect Mealie in Family Hub Light's integration settings. Dinner is independent of the legend filter.
 
 Past events are lightly dimmed in the calendar, including day details, and retain their full titles and notes. The clock-driven display updates on the card's existing five-minute refresh and Home Assistant state updates; it is not a second-by-second timer. All titles and recipe descriptions render as text and the existing Mealie URL restrictions continue to apply.
 
@@ -135,7 +135,9 @@ Use a Gemini API key and check the API project's quota and billing. Google AI co
 
 ## Mealie recipe details
 
-Keep your Mealie Dinner entity in `calendars`. Add this optional block in the card's YAML editor to show the dinner title, a thumbnail and short recipe description when available, and an **Open in Mealie** link. These appear in the Month selected-day pane and in Week day details alongside AI Briefing when it is enabled.
+Install Home Assistant's Mealie integration, then open **Settings → Devices & services → Family Hub Light → Configure → Mealie**. Enable Mealie and select its Dinner calendar. Keep the same entity under `calendars` in the card editor or YAML. The setup checks that Home Assistant can read the meal plan with its existing credentials. Dashboard accounts need read access to that calendar. Reload the dashboard after changing the connection.
+
+Enter the optional browser-accessible Mealie URL and group slug together to enable thumbnails and **Open in Mealie** links. Preexisting cards continue to accept this connection block. Remove it when migrating the card to integration settings.
 
 ```yaml
 mealie:
@@ -148,8 +150,14 @@ mealie:
 - **Calendar** is the same entity ID already listed under `calendars`.
 - **Config entry ID** identifies the existing Home Assistant integration. In Home Assistant, select **Mealie: Get mealplan** in the automation editor, choose your Mealie instance, then switch that action to YAML to read its `config_entry_id`. Use the same instance that supplies the dinner calendar.
 - **URL** is the browser-accessible Mealie base address without a recipe path. **Group** is the segment after `/g/` when you open a recipe in Mealie. For example, use `home` for a recipe URL containing `/g/home/r/`.
-- The card reads only the selected date through Home Assistant’s `mealie.get_mealplan` action when a dinner event is visible. Week and Month share the lookup for five minutes. The action supplies the recipe description directly. A plain meal note or an ambiguous recipe match appears as a regular event. No additional Mealie token is needed.
+- The card reads only the selected date through Home Assistant’s `mealie.get_mealplan` action when a dinner event is visible. Week and Month share the preview lookup for five minutes. With browsing disabled, the server checks that the selected recipe belongs to the requested dinner date before returning its details. The action supplies the recipe description directly. Select **View recipe** in Tonight’s Dinner or in Month or Week day details for ingredients and instructions. Freeform meals stay read-only and use their calendar titles and notes. Ambiguous same-title meals stay as calendar entries. Family Hub screensavers wait while the recipe dialog is open. No additional Mealie token is needed.
 - The dashboard browser loads thumbnails directly from the Mealie URL, so the tablet or computer must be able to reach that address on your LAN. Use a trusted HTTPS Mealie URL if you open Home Assistant over HTTPS, since the browser may block HTTP images on an HTTPS page. The recipe opens in a new tab using your normal Mealie login. If the thumbnail fails, the card tries the full-size Mealie image. If both fail, the title, available description and recipe link remain visible. If Home Assistant cannot return the meal plan, check the instance ID and the **Get mealplan** action with the same Home Assistant account used on the dashboard.
+
+### Optional recipe browser
+
+Enable **Allow dinner-calendar readers to search recipes and see this Mealie account’s favorites** in the Mealie configuration. Then enable **Show recipe browser** in the card editor or set `recipe_browser: true` in its YAML. Use the integration connection for this feature. Cards with legacy Mealie YAML can migrate by removing the YAML connection block after configuring the integration.
+
+The browser uses the Mealie account already connected to Home Assistant. Anyone with read permission on the selected Dinner calendar can see that account’s favorites and search the recipes it can access when browsing is enabled. Favorites are read-only, eight per page. Search pages through up to 100 matches from Home Assistant’s search action. Narrow the search to find recipes outside that result set. The card caches recent successful results for up to five minutes. No second Mealie token or direct server URL is required.
 
 ## Thermostat Quick Actions
 
@@ -276,7 +284,7 @@ npm --prefix preview exec -- playwright install chromium
 npm run capture --prefix preview
 ```
 
-The harness checks Week and Month at desktop and phone widths, verifies the Mealie Dinner filter through a view switch, exercises current and future briefings, and writes PNGs to `images/live/`. The date, time zone, locale, viewport and device scale are fixed. Font rendering can differ by operating system. The harness opens a local file and blocks HTTP(S) requests.
+Open `preview/live.html` for a local demo with dark theme, the Kitchen mock-up, Tonight’s Dinner, recipe browsing, and a sample Add Event flow. Preview changes stay in the page. The harness checks Week and Month at desktop and phone widths, verifies the Mealie Dinner filter through a view switch, exercises current and future briefings, and writes PNGs to `images/live/`. The date, time zone, locale, viewport and device scale are fixed. Font rendering can differ by operating system. The harness opens a local file and blocks HTTP(S) requests.
 
 With Home Assistant Core 2026.11 installed in a test environment, run `python tests/check_briefing_package.py` to exercise the package with a temporary Local Calendar, synthetic AI responses, and a restart. Install the Babel version listed in the integration manifest, then run `python -B -m unittest discover -s tests -p check_briefing_locale.py` to check the managed briefing's locale formatting.
 

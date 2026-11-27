@@ -76,6 +76,17 @@
   },
   "options": {
     "step": {
+      "mealie": {
+        "title": "Mealie",
+        "description": "Choose the Dinner calendar from your existing Home Assistant Mealie integration. Enter both link fields if you want thumbnails and links to Mealie.",
+        "data": {
+          "enabled": "Enable Mealie",
+          "browse": "Allow dinner-calendar readers to search recipes and see this Mealie account’s favorites",
+          "calendar": "Mealie Dinner calendar",
+          "url": "Mealie URL for links (optional)",
+          "group": "Mealie group slug (optional)"
+        }
+      },
       "family_assistant": {
         "title": "Family Assistant",
         "description": "Allow signed-in users with calendar edit permission to propose and confirm new events.",
@@ -105,6 +116,7 @@
         "menu_options": {
           "settings": "Family Hub Settings",
           "ai_briefing": "AI Briefing",
+          "mealie": "Mealie",
           "family_assistant": "Family Assistant",
           "reminders": "Calendar reminders",
           "grocy": "Grocy",
@@ -202,6 +214,9 @@
       "feature_disabled": "This feature is disabled in this Family Hub version."
     },
     "error": {
+      "mealie_calendar": "Select a loaded Mealie Dinner calendar.",
+      "mealie_link": "Enter a valid HTTP or HTTPS URL and a group slug, or clear both fields.",
+      "mealie_unavailable": "Home Assistant could not read the meal plan. Check the Mealie integration and its credentials.",
       "briefing_calendars_required": "Select at least one calendar to enable AI Briefing.",
       "assistant_task_required": "Choose a Home Assistant AI Task entity.",
       "assistant_writable_required": "Choose calendars that support creating events.",

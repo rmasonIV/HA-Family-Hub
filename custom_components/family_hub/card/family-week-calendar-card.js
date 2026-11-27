@@ -19522,6 +19522,10 @@ return null;
 });
 }
 _showScreenSaver() {
+if (window.familyHubRecipeDialogs?.size) {
+  this._resetScreenSaverIdleTimer();
+  return;
+}
 if (!this._screenSaverApplicable()) return;
 const overlay = this._ensureScreenSaverOverlay();
 const ss = this._getSettings().screenSaver;
