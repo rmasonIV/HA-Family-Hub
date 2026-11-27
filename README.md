@@ -27,6 +27,8 @@ The calendar legend uses rounded filled color labels and supports filtering; pas
 
 Connect Mealie under **Family Hub Light → Configure → Mealie** using Home Assistant’s existing Mealie integration. The same read-only recipe dialog opens from Tonight’s Dinner and from Month and Week day details. Recipe search and native favorites are optional. See [Mealie setup and legacy YAML migration](live/README.md#mealie-recipe-details).
 
+Pin your most-used calendars in the visual editor. The legend stays on one row, and **Other Calendars** shows how many additional calendars are visible and lets you filter them. Try it with 15 fictional calendars in the PR preview using **Calendar legend demo**. [Calendar legend settings](live/README.md#settings).
+
 Enable [AI Daily Briefing](live/README.md#ai-daily-briefing) to summarize an allowlist of calendars with a local or cloud Home Assistant AI Task.
 
 ### Optional calendar appearance
