@@ -163,6 +163,7 @@ test('Mealie recipe opens above the calendar and leaves the selected day in plac
   assert.equal(await page.evaluate(() => window.familyHubRecipeDialogs.size),1);
   await page.keyboard.press('Escape');
   await recipe.waitFor({state:'hidden'});
+  await page.waitForFunction(() => window.familyHubRecipeDialogs.size === 0, null, {timeout:5000});
   assert.equal(await trigger.evaluate(node => node.getRootNode().activeElement === node),true);
   const selected = page.locator('.month-day[aria-expanded="true"]');
   assert.equal(await selected.getAttribute('data-day'),'10');
@@ -170,6 +171,7 @@ test('Mealie recipe opens above the calendar and leaves the selected day in plac
   await recipe.getByText('Chickpeas',{exact:true}).waitFor();
   await recipe.getByRole('button',{name:'Close recipe'}).tap();
   await recipe.waitFor({state:'hidden'});
+  await page.waitForFunction(() => window.familyHubRecipeDialogs.size === 0, null, {timeout:5000});
   await page.locator('#week-view').tap();
   await page.getByRole('button',{name:'View events for Wed 10',exact:true}).tap();
   const week = page.locator('#week-day-details');
@@ -177,6 +179,6 @@ test('Mealie recipe opens above the calendar and leaves the selected day in plac
   await recipe.getByText('Chickpeas',{exact:true}).waitFor();
   await page.keyboard.press('Escape');
   await recipe.waitFor({state:'hidden'});
+  await page.waitForFunction(() => window.familyHubRecipeDialogs.size === 0, null, {timeout:5000});
   assert.ok(await week.isVisible());
-  assert.equal(await page.evaluate(() => window.familyHubRecipeDialogs.size),0);
 });
