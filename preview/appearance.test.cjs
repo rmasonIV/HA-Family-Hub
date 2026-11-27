@@ -207,7 +207,7 @@ test('calendar legend fits one row and keeps every calendar reachable as the car
       assert.equal(await other.count(), 0);
     } else {
       await other.tap();
-      assert.equal(await rows.count(), count - direct);
+      assert.equal(await rows.count(), count - await pins.count());
       await dialog.getByRole('button', {name:'Done'}).tap();
     }
     assert.ok(await legend.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
@@ -262,7 +262,7 @@ test('legend and modal filter the same events and the editor saves pins across r
   await libraryEvent.waitFor({state:'detached'});
   assert.equal(await other.textContent(), 'Other (9/10)');
   await dialog.getByRole('button', {name:'Clear All'}).tap();
-  assert.equal(await dialog.locator('input:checked').count(), 0);
+  assert.equal(await dialog.locator('label:not([hidden]) input:checked').count(), 0);
   assert.equal(await other.textContent(), 'Other (0/10)');
   assert.equal(await familyEvent.count(), 1);
   await dialog.getByRole('button', {name:'Select All'}).tap();

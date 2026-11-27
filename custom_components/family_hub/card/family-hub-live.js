@@ -523,7 +523,7 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
   background:color-mix(in srgb,var(--event-color,#4a90e2) 20%,var(--fh-surface));
   border-inline-start:3px solid var(--event-color,#4a90e2);
 }
-.calendar-legend {display:flex;flex:1 1 0;gap:6px;padding:0;margin:0;min-inline-size:min(120px,100%);list-style:none;font-size:.85rem}
+.calendar-legend {display:flex;flex:1 1 0;contain:inline-size;gap:6px;padding:0;margin:0;min-inline-size:min(120px,100%);list-style:none;font-size:.85rem}
 .calendar-legend[hidden] {display:none}
 .calendar-legend > li {flex:none}
 .calendar-legend > li[hidden],#other-calendar-list label[hidden] {display:none}
