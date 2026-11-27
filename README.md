@@ -21,9 +21,9 @@ This GPLv3 fork of Family Hub is maintained by **rmasonIV**. Changes since 2026 
 
 ## Family Hub Live
 
-Add **Family Hub Live** to a Home Assistant dashboard for Week and Month views, shared daily forecasts, calendar filtering, four Quick Actions, and up to four built-in Home Assistant widgets. Month keeps today visible when another day is selected and shows the selected day's forecast and events in its details pane.
+Add **Family Hub Live** to a Home Assistant dashboard for Week and Month views, shared daily forecasts, calendar filtering, four Quick Actions, and up to four built-in Home Assistant or Family Hub household widgets. Month keeps today visible when another day is selected and shows the selected day's forecast and events in its details pane.
 
-Configure calendar and action entities in the visual editor. Use the code editor for full native card settings. Existing widget entity IDs still work, and `widget_layout: wide` keeps the full-width stack. See [Family Hub Live setup, settings, YAML examples, and troubleshooting](live/README.md).
+The calendar legend uses rounded filled color labels and supports filtering; past events are dimmed. Optional What's next, Countdown, and Tonight's dinner widgets use existing calendar and Mealie data. Configure calendar and action entities in the visual editor. Use the code editor for full native card settings. Existing widget entity IDs still work, and `widget_layout: wide` keeps the full-width stack. See [Family Hub Live setup, settings, YAML examples, and troubleshooting](live/README.md).
 
 Enable [AI Daily Briefing](live/README.md#ai-daily-briefing) to summarize an allowlist of calendars with a local or cloud Home Assistant AI Task.
 

@@ -61,6 +61,17 @@ const ACTION_ICON_CHOICES = [
 ];
 const isHexColor = color => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color);
 const isIcon = icon => typeof icon === 'string' && /^mdi:[a-z0-9-]+$/.test(icon);
+const calendarInk = color => {
+  const channels = [1,3,5].map(i => {
+    const n = parseInt(color.slice(i,i+2),16)/255;
+    return n <= .04045 ? n/12.92 : ((n+.055)/1.055)**2.4;
+  });
+  return channels[0]*.2126+channels[1]*.7152+channels[2]*.0722 > .179 ? '#172334' : '#ffffff';
+};
+const relativeCountdown = ms => {
+  const minutes = Math.max(0,Math.ceil(ms/60000));
+  return minutes < 60 ? 'In '+minutes+' min' : 'In '+Math.floor(minutes/60)+' hr'+(minutes%60?' '+minutes%60+' min':'');
+};
 const CALENDAR_COLORS = ['#4a90e2','#2ba675','#b47adc','#e68d38','#d96389','#28a8af','#8b9b36','#777fea'];
 const calendarColor = (config, id, index) => {
   const color = config.calendar_colors?.[id];
@@ -74,6 +85,7 @@ const ACTIONS = {
 const domainOf = id => typeof id === 'string' ? id.split('.')[0] : '';
 const isEntityId = id => typeof id === 'string' && /^[a-z0-9_]+\.[a-z0-9_]+$/.test(id);
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const HOUSEHOLD_WIDGETS = new Set(['upcoming-event','countdown','tonights-dinner']);
 const WIDGET_TYPES = new Set(['weather-forecast', 'thermostat', 'gauge', 'tile', 'sensor', 'entities']);
 
 function widgetConfig(entry) {
@@ -81,7 +93,15 @@ function widgetConfig(entry) {
     const type = {weather:'weather-forecast', climate:'thermostat', sensor:'sensor'}[domainOf(entry)];
     return {type:typeof type === 'string' ? type : 'tile', entity:entry};
   }
-  if (!isRecord(entry) || !WIDGET_TYPES.has(entry.type)) return null;
+  if (!isRecord(entry)) return null;
+  if (HOUSEHOLD_WIDGETS.has(entry.type)) {
+    if (entry.type !== 'countdown') return {type:entry.type};
+    if (entry.calendar != null && (!isEntityId(entry.calendar) || domainOf(entry.calendar) !== 'calendar')) return null;
+    if (entry.event != null && (typeof entry.event !== 'string' || !entry.event.trim() || entry.event.length > 160)) return null;
+    return {type:entry.type,...(entry.calendar ? {calendar:entry.calendar} : {}),
+      ...(entry.event ? {event:entry.event.trim()} : {})};
+  }
+  if (!WIDGET_TYPES.has(entry.type)) return null;
   if (entry.type === 'entities') {
     if (!Array.isArray(entry.entities) || !entry.entities.length) return null;
   } else if (!isEntityId(entry.entity)) return null;
@@ -326,6 +346,10 @@ small,.muted{color:#627083}.notice{padding:10px 14px;background:#e6f3ff;border-r
 .widget-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
 .widget-slot{min-width:0}
 .widget-status{margin:0;padding:10px;border:1px solid var(--fh-border);border-radius:9px;overflow-wrap:anywhere}
+.household-widget{border:1px solid var(--fh-border);border-radius:10px;padding:12px;background:var(--fh-surface);min-height:100px;overflow-wrap:anywhere}
+.household-widget h4{margin:0 0 8px;font-size:.95rem}.household-widget strong{display:block;margin:4px 0;font-size:1.12rem}
+.household-widget p{margin:5px 0}.household-widget small{color:var(--secondary-text-color,#627083)}
+.household-widget .meal-recipe{margin-top:8px}
 .action-grid{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;padding:8px;border-top:1px solid #dce2e9}
 .quick-control{display:flex;align-items:center;gap:8px;min-width:0;max-width:min(100%,24rem);min-height:62px;padding:8px;border:1px solid #cbd5e1;border-radius:9px;background:#f4f7fb;text-align:left;color:inherit}
 .quick-control[aria-pressed="true"]{background:#fff1bf}
@@ -485,9 +509,11 @@ small,.muted,.day-event summary .description-preview {color:var(--secondary-text
 }
 .calendar-legend {display:flex;flex-wrap:wrap;gap:2px 6px;padding:0;margin:0;min-inline-size:0;list-style:none;font-size:.85rem}
 .calendar-legend[hidden] {display:none}
-.calendar-legend button {display:flex;align-items:center;gap:6px;border:1px solid transparent;border-radius:16px;padding:4px 8px;min-height:36px;background:transparent;color:inherit;text-align:start;overflow-wrap:anywhere}
-.calendar-legend button[aria-pressed="true"]{border-color:var(--event-color);background:var(--fh-tint)}
-.calendar-legend button::before {content:'';flex:none;width:10px;height:10px;border-radius:50%;background:var(--event-color)}
+.calendar-legend button{display:flex;align-items:center;border:2px solid transparent;border-radius:9px;padding:5px 10px;min-height:36px;background:var(--event-color);color:var(--legend-ink);font-weight:650;text-align:start;overflow-wrap:anywhere}
+.calendar-legend button[aria-pressed="true"]{outline:2px solid var(--event-color);outline-offset:2px}
+.calendar-legend button[data-inactive="true"]{opacity:.5}
+.calendar-legend button:focus-visible{outline:3px solid var(--primary-color,#4a90e2);outline-offset:2px}
+.event.is-past{opacity:.55}
 @container (max-width:720px) {.widget-grid[data-count="3"]{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container (max-width:480px) {.widget-grid[data-count]{grid-template-columns:minmax(0,1fr)}}
 .widget-grid.wide[data-count]{grid-template-columns:minmax(0,1fr)}
@@ -974,6 +1000,7 @@ function mount(root, host) {
   function redrawCalendar(refreshEvents = true) {
     const active = root.activeElement?.dataset;
     renderCalendar(refreshEvents);
+    updateHouseholdWidgets();
     if (active?.forecast !== undefined) weekDays.querySelector(`[data-forecast="${active.forecast}"]`)?.focus();
     if (active?.weekDay !== undefined) weekDays.querySelector(`[data-week-day="${active.weekDay}"]`)?.focus();
     if (active?.day !== undefined) monthGrid.querySelector(`[data-day="${active.day}"]`)?.focus({preventScroll:true});
@@ -1102,12 +1129,14 @@ function mount(root, host) {
     const button = window.document.createElement('button');
     button.type = 'button';
     button.style.setProperty('--event-color', color);
+    button.style.setProperty('--legend-ink', calendarInk(color));
     button.textContent = id;
     button.setAttribute('aria-pressed', 'false');
     button.onclick = () => {
       selectedCalendar = selectedCalendar === id ? null : id;
       for (const [calendar, control] of legendItems) {
         control.setAttribute('aria-pressed', String(calendar === selectedCalendar));
+        control.toggleAttribute('data-inactive', Boolean(selectedCalendar && calendar !== selectedCalendar));
       }
       redrawCalendar();
     };
@@ -1126,7 +1155,7 @@ function mount(root, host) {
   }
 
   function eventsOn(date) {
-    return dayEvents(date).map(event => [event.summary, colors.get(event.calendarId), {time:time.when(event.start, event.end, date, event.allDay),
+    return dayEvents(date).map(event => [event.summary, colors.get(event.calendarId), {past:event.end.getTime() <= Date.now(), time:time.when(event.start, event.end, date, event.allDay),
         location:event.location, description:event.description, calendarId:event.calendarId}]);
   }
 
@@ -1233,6 +1262,7 @@ function mount(root, host) {
     scheduleCalendarRefresh();
     calendarStatus.textContent = results.some(result => result.status === 'rejected') ? 'Some calendars could not load.' : '';
     redrawCalendar();
+    updateHouseholdWidgets();
   }
 
   const climateUpdates = [];
@@ -1284,9 +1314,90 @@ function mount(root, host) {
   widgetGrid.dataset.count = String(widgets.length);
   widgetPanel.hidden = !widgets.length;
 
+  function allScheduledEvents() {
+    return [...calendarEvents, ...[...confirmedEvents.values()].map(({event}) => event)]
+      .filter(event => !selectedCalendar || selectedCalendar === event.calendarId)
+      .sort((a,b) => a.start-b.start);
+  }
+
+  const countdownSelections = new Map();
+  function renderHouseholdWidget(entry, slot) {
+    let article = slot.querySelector('.household-widget');
+    if (!article) {
+      article = window.document.createElement('article');
+      article.className = 'household-widget';
+      slot.replaceChildren(article);
+    }
+    const kind = entry.config.type;
+    const now = Date.now();
+    const future = allScheduledEvents().filter(event => event.end.getTime() > now);
+    article.replaceChildren();
+    const heading = window.document.createElement('h4');
+    heading.textContent = {'upcoming-event':"What's next",countdown:'Countdown','tonights-dinner':"Tonight's dinner"}[kind];
+    article.append(heading);
+    const line = (tag,value) => {
+      const el = window.document.createElement(tag);
+      el.textContent = value;
+      article.append(el);
+      return el;
+    };
+    if (kind === 'upcoming-event') {
+      const event = future[0];
+      if (!event) {line('small','No upcoming events in the loaded calendar range.');return;}
+      line('strong',event.summary);
+      line('small',event.allDay ? 'All day' : event.start.getTime() > now
+        ? relativeCountdown(event.start.getTime()-now) : 'Happening now');
+      return;
+    }
+    if (kind === 'countdown') {
+      const candidates = future.filter(event =>
+        (!entry.config.calendar || entry.config.calendar === event.calendarId) &&
+        (!entry.config.event || event.summary.toLowerCase().includes(entry.config.event.toLowerCase())));
+      if (!candidates.length) {line('small','No matching upcoming event in the loaded calendar range.');return;}
+      const identity = event => JSON.stringify([event.calendarId,event.summary,event.start.toISOString()]);
+      const chosen = countdownSelections.get(slot);
+      const target = candidates.find(event => identity(event) === chosen) ?? candidates[0];
+      const picker = window.document.createElement('select');
+      picker.setAttribute('aria-label','Select countdown event');
+      candidates.slice(0,100).forEach(event => {
+        const choice = window.document.createElement('option');
+        choice.value = identity(event);
+        choice.textContent = event.summary + ' — ' + dateLabel(time.dayAt(event.start),{month:'short',day:'numeric'});
+        picker.append(choice);
+      });
+      picker.value = identity(target);
+      picker.onchange = () => {countdownSelections.set(slot,picker.value);renderHouseholdWidget(entry,slot);};
+      article.append(picker);
+      line('strong',target.summary);
+      const days = Math.max(0,Math.ceil((target.start.getTime()-now)/86400000));
+      line('p',target.start.getTime() <= now ? 'Happening now' : days+' day'+(days === 1?'':'s')+' away');
+      return;
+    }
+    const mealie = host.config.mealie;
+    if (!mealie) {line('small','Configure Mealie in Family Hub Live settings.');return;}
+    const day = time.dayAt(now);
+    const meals = dayEvents(day,mealie.calendar);
+    if (!meals.length) {line('small','No dinner planned today.');return;}
+    const meal = meals[0];
+    line('strong',meal.summary);
+    const recipe = window.document.createElement('div');
+    recipe.className = 'meal-recipe';
+    // Reuse the existing guarded Mealie recipe resolver and five-minute cache.
+    article.append(recipe);
+    enrichDinnerEvents(article,day);
+  }
+
+  function updateHouseholdWidgets() {
+    if (!host.isConnected) return;
+    for (const {entry,slot} of widgets) {
+      if (HOUSEHOLD_WIDGETS.has(entry.config.type)) renderHouseholdWidget(entry,slot);
+    }
+  }
+
   function updateWidgets(hass) {
     if (!host.isConnected) return;
     for (const {key, entry, slot, status} of widgets) {
+      if (HOUSEHOLD_WIDGETS.has(entry.config.type)) continue;
       const showError = () => {
         entry.failed = true;
         status.dataset.failed = '';
@@ -1321,6 +1432,7 @@ function mount(root, host) {
           });
       }
     }
+    updateHouseholdWidgets();
   }
 
   function updateEntities() {
@@ -1366,7 +1478,7 @@ function mount(root, host) {
     updateWidgets(hass);
   }
   function eventCards(events, tag = 'div') {
-    return events.map(([title, color]) => `<${tag} class="event" style="--event-color:${color}">${escapeText(title)}</${tag}>`).join('');
+    return events.map(([title, color, details = {}]) => `<${tag} class="event${details.past ? ' is-past' : ''}" style="--event-color:${color}">${escapeText(title)}</${tag}>`).join('');
   }
 
   const recipeCache = new Map();
@@ -1455,7 +1567,7 @@ function mount(root, host) {
   }
 
   function dayEventCards(events) {
-    return events.map(([title, color, details = {}]) => `<article class="event day-event" style="--event-color:${color}">
+    return events.map(([title, color, details = {}]) => `<article class="event day-event${details.past ? ' is-past' : ''}" style="--event-color:${color}">
       <strong>${escapeText(title)}</strong>
       ${details.time ? `<p class="event-meta"><span class="event-icon" role="img" aria-label="Time">🕒</span><span>${escapeText(details.time)}</span></p>` : ''}
       ${details.location ? `<p class="event-meta"><span class="event-icon" role="img" aria-label="Location">📍</span><span>${escapeText(details.location)}</span></p>` : ''}
@@ -1920,6 +2032,17 @@ class FamilyHubLiveEditor extends HTMLElement {
       add.onclick = () => save(key, [...selected,picker.value]);
       section.append(picker,add);
       if (key === 'widgets') {
+        const presets = document.createElement('div');
+        for (const [type,name] of [['upcoming-event',"What's next"],['countdown','Countdown'],['tonights-dinner',"Tonight's dinner"]]) {
+          if (selected.some(entry => widgetConfig(entry)?.type === type)) continue;
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = '+ '+name;
+          button.disabled = selected.length >= MAX_ITEMS;
+          button.onclick = () => save('widgets',[...selected,{type}]);
+          presets.append(button);
+        }
+        section.append(presets);
         const hint = document.createElement('p');
         hint.textContent = 'Use the code editor to add built-in card configurations or change their options.';
         section.append(hint);
