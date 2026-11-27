@@ -19,7 +19,17 @@ in [CHANGELOG_ARCHIVE.md](CHANGELOG_ARCHIVE.md).
 
 ## Changelog
 
-### Unreleased
+### 2026.11.4.1 (unreleased)
+
+- An optional recipe browser searches up to 100 matches and pages through the connected Mealie account’s native favorites. Browsing requires opt-in in Family Hub Light and the Live card.
+
+- Tonight’s Dinner lists recipe-linked and freeform entries. The widget and Month and Week day details open the same read-only recipe dialog. Family Hub screensavers wait while it is open.
+
+- Configure Mealie in Family Hub Light using a loaded Mealie Dinner calendar. Existing card YAML continues to work.
+
+- Tap anywhere in the collapsed Quick Actions header to expand it. Calendar legend labels use month-event sizing within 44 px filter buttons.
+
+### 2026.11.4.0 — Quick Actions previews
 
 - Family Hub Live shows icon and label previews for configured actions when Quick Actions is collapsed. Tapping a preview expands the ribbon. Heat/Cool places its low and high setpoints side by side when space allows, with 44 px temperature buttons.
 

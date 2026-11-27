@@ -25,6 +25,8 @@ Add **Family Hub Live** to a Home Assistant dashboard for Week and Month views, 
 
 The calendar legend uses rounded filled color labels and supports filtering; past events are dimmed. Optional What's next, Countdown, and Tonight's dinner widgets use existing calendar and Mealie data. Configure calendar and action entities in the visual editor. Use the code editor for full native card settings. Existing widget entity IDs still work, and `widget_layout: wide` keeps the full-width stack. See [Family Hub Live setup, settings, YAML examples, and troubleshooting](live/README.md).
 
+Connect Mealie under **Family Hub Light → Configure → Mealie** using Home Assistant’s existing Mealie integration. The same read-only recipe dialog opens from Tonight’s Dinner and from Month and Week day details. Recipe search and native favorites are optional. See [Mealie setup and legacy YAML migration](live/README.md#mealie-recipe-details).
+
 Enable [AI Daily Briefing](live/README.md#ai-daily-briefing) to summarize an allowlist of calendars with a local or cloud Home Assistant AI Task.
 
 ### Optional calendar appearance

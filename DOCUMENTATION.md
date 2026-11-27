@@ -19,6 +19,12 @@ come here for the details on any specific feature, the full `todo`/
 
 For `custom:family-hub-live`, see the [Family Hub Live configuration reference](live/README.md) for both editor and YAML setup, weather, calendar filtering, the supported Home Assistant widget types, limits, and migration. The calendar settings below cover the separate `custom:family-week-calendar-card`.
 
+### Mealie in Family Hub Live
+
+Open **Settings → Devices & services → Family Hub Light → Configure → Mealie** and select the Dinner calendar from your existing Home Assistant Mealie integration. Add that same calendar to the Live card. Use the card editor or YAML to add Tonight’s Dinner and control how it appears.
+
+Tonight’s Dinner and Month and Week day details share a read-only recipe view. Freeform meals display their calendar title and notes. Optional recipe search and native favorites use the connected Mealie account. Enable browsing in the integration and in the card. The [Mealie configuration guide](live/README.md#mealie-recipe-details) covers permissions, legacy YAML migration, and recipe browser limits.
+
 ## Features
 
 ### Calendar & layout

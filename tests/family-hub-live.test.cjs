@@ -408,6 +408,7 @@ test('briefings are opt-in, plain text, shared today and transient for future da
   }, {
     async callWS(message) {
       if (message.type === 'family_hub/assistant/status') return {visible:false};
+      if (message.type === 'family_hub/mealie_read') return null;
       calls.push(message);
       if (calls.length > 1) throw new Error('Provider unavailable');
       return {response:{status:'ok', day:'2026-11-21', text:'No events are scheduled.',
@@ -491,6 +492,7 @@ test('integration settings enable briefings without card YAML or package entitie
     }},
     async callWS(request) {
       if (request.type === 'family_hub/assistant/status') return {visible:false};
+      if (request.type === 'family_hub/mealie_read') return null;
       requests.push(request);
       return {status:'ok', day:request.day, text:'A sample briefing.', generated_at:'2026-11-21T02:00:00Z'};
     }
@@ -722,6 +724,12 @@ test('collapsed previews follow configured actions and only expand the ribbon', 
   }}};
   assert.deepEqual(buttons.map(button => button.textContent), ['Office', 'Thermostat', 'Living Room']);
   assert.equal(controls.hidden, true);
+  toggle.parentElement.click();
+  assert.equal(controls.hidden, false);
+  assert.equal(root.activeElement, toggle);
+  assert.deepEqual(services, []);
+  assert.deepEqual(details, []);
+  toggle.click();
   for (const button of buttons) {
     assert.equal(previews.hidden, false);
     assert.equal(button.getAttribute('aria-controls'), controls.id);

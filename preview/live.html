@@ -6,7 +6,7 @@
 <title>Family Hub Live preview</title>
 <style>
   body{margin:0;background:#edf2f7;color:#24334a;font:15px system-ui,sans-serif}
-  body.dark{background:#141a23;color:#edf2fa;--primary-text-color:#edf2fa;--secondary-text-color:#b6c4d7;--ha-card-background:#202938;--divider-color:#42516a;--primary-color:#91bbf3}
+  body.dark{color-scheme:dark;background:#141a23;color:#edf2fa;--primary-text-color:#edf2fa;--secondary-text-color:#b6c4d7;--ha-card-background:#202938;--divider-color:#42516a;--primary-color:#91bbf3}
   header{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;padding:12px 16px}
   header h1{font-size:1.1rem;margin:0}header span{flex:1}
   header button{border:1px solid #8093ab;border-radius:6px;background:transparent;color:inherit;padding:8px;font:inherit;cursor:pointer}
@@ -99,6 +99,12 @@
   const renderCard = () => {
     card.setConfig(config);
     if (capture) return;
+    const dialog = card.shadowRoot.querySelector('#assistant-dialog');
+    const note = document.createElement('p');
+    note.className = 'muted';
+    note.textContent = 'Preview only. Your text becomes the event title and the demo supplies a time.';
+    dialog.querySelector('#assistant-request-label').before(note);
+    dialog.querySelector('#assistant-request').placeholder = 'Example: Family bike ride';
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = 'Kitchen';
@@ -148,20 +154,24 @@
     return {summary,location,start:{dateTime:start.toISOString()},end:{dateTime:end.toISOString()}};
   };
   const dinner = 'Lemon chickpea bowls';
+  const mealiePreview = !capture || params.has('mealie');
+  let eventDraft;
+  let draftSequence = 0;
   const briefingPreview = new URLSearchParams(location.search).has('briefing');
   const calendars = {
     'calendar.family':[event(0,18,'Dinner with friends','Home'),event(2,9,'Dentist appointment','Oak Dental'),event(5,11,'Family outing','Community park'),event(-2,16,'Board games','Home'),event(9,18,'Pasta night','Home'),event(13,10,'Park cleanup','Community park'),event(20,15,'Picnic','Lakeside park')],
     'calendar.school':[event(1,8,'Library day','School library'),event(3,17,'Team practice','Field 2'),event(4,19,'Movie night','School gym'),event(11,9,'Field trip','Science museum'),event(17,10,'Art show','School gym')],
-    'calendar.mealie_dinner': [event(3,18,dinner,'')],
+    'calendar.mealie_dinner': [event(3,18,dinner,''), ...(mealiePreview ? [event(3,19,'Leftovers','')] : [])],
   };
   if (briefingPreview) calendars['calendar.family'].push(event(3,17,'Dentist appointment','Oak Dental'));
   const config = {
     daily_briefing:briefingPreview,
     appearance:{frame:params.get('frame'), seasonal_accent:params.get('seasonal_accent')},
     type:'custom:family-hub-live',ribbon_default:capture ? 'collapsed' : 'expanded',default_view:capture ? 'month' : 'month_details',week_start:'sunday',weather_entity:'weather.home',
-    mealie:{calendar:'calendar.mealie_dinner',config_entry_id:'demo-entry',url:'https://mealie.example.test',group:'family'},
+    mealie:mealiePreview ? undefined : {calendar:'calendar.mealie_dinner',config_entry_id:'demo-entry',url:'https://mealie.example.test',group:'family'},
+    recipe_browser:mealiePreview,
     calendars:Object.keys(calendars),actions:['light.living_room','cover.garage','switch.porch','script.movie_time'],
-    widgets:['sensor.outdoor_temperature','sensor.humidity'],action_appearance:{'light.living_room':{icon:'mdi:lamps',on_color:'#d48b22',off_color:'#738da8'}}
+    widgets:['sensor.outdoor_temperature','sensor.humidity', ...(mealiePreview ? [{type:'tonights-dinner'}] : [])],action_appearance:{'light.living_room':{icon:'mdi:lamps',on_color:'#d48b22',off_color:'#738da8'}}
   };
   const hass = {
     config:{time_zone:'America/Chicago',unit_system:{temperature:'°F'}},
@@ -188,14 +198,53 @@
     connection:{async subscribeMessage(callback) { callback({forecast}); return () => {}; }},
     async callWS(message) {
       const day = today.toISOString().slice(0,10);
+      if (!capture) {
+        switch (message.type) {
+          case 'family_hub/assistant/status':
+            return {visible:true, configured:true, calendars:{'calendar.family':'Family','calendar.school':'School'}};
+          case 'family_hub/assistant/propose': {
+            const calendarId = message.calendar || 'calendar.family';
+            const sample = event(3,16,message.text.trim().slice(0,120),'');
+            eventDraft = {id:'preview-'+(++draftSequence), calendarId, sample};
+            return {status:'proposal', id:eventDraft.id, calendar:hass.states[calendarId].attributes.friendly_name,
+              timezone:hass.config.time_zone, event:{summary:sample.summary,
+                start_date_time:sample.start.dateTime, end_date_time:sample.end.dateTime}};
+          }
+          case 'family_hub/assistant/cancel':
+            if (eventDraft?.id === message.proposal_id) eventDraft = undefined;
+            return {status:'cancelled'};
+          case 'family_hub/assistant/confirm':
+            if (!eventDraft || eventDraft.id !== message.proposal_id) return {status:'expired'};
+            calendars[eventDraft.calendarId].push(eventDraft.sample);
+            eventDraft = undefined;
+            return {status:'created'};
+        }
+      }
       if (message.domain === 'script') {
         const requested = message.service_data.briefing_date;
         return {response:{status:'ok',day:requested,text:requested === day
           ? hass.states['sensor.family_hub_daily_briefing'].attributes.briefing.text
           : 'No events are scheduled on the briefing calendars.',generated_at:today.toISOString()}};
       }
-      return {response:{mealplan: message.service_data.start_date === day
-        ? [{mealplan_date:day,entry_type:'dinner',recipe:{name:dinner,slug:'lemon-chickpea-bowls'}}] : []}};
+      const operation = message.operation;
+      const recipe = {name:dinner, slug:'lemon-chickpea-bowls', total_time:'30 minutes'};
+      if (operation === 'settings') return {calendar:'calendar.mealie_dinner',
+        url:'https://mealie.example.test',group:'family',browse:true};
+      if (operation === 'search' || operation === 'favorites') return {items:[recipe]};
+      if (operation === 'recipe' || message.service === 'get_recipe') {
+        const response = {recipe:{...recipe, description:'Roasted chickpeas with cucumber and lemon over rice.',
+          ingredients:[{display:'Chickpeas'},{display:'Rice'},{display:'Cucumber'},{display:'Lemon'}],
+          instructions:[{text:'Roast the chickpeas with olive oil and paprika.'},{text:'Serve over rice with cucumber and lemon.'}]
+        }};
+        return operation ? response : {response};
+      }
+      if (operation === 'mealplan' || message.domain === 'mealie') {
+        const response = {mealplan: (message.value ?? message.service_data?.start_date) === day
+          ? [{mealplan_date:day,entry_type:'dinner',recipe},
+             {mealplan_date:day,entry_type:'dinner',title:'Leftovers',recipe:null}] : []};
+        return operation ? response : {response};
+      }
+      return null;
     },
     async callApi(method,path) {
       const [resource,query] = path.split('?');
